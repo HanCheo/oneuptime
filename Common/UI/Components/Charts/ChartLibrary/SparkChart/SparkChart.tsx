@@ -99,7 +99,7 @@ const SparkAreaChart: React.ForwardRefExoticComponent<
     return (
       <div
         ref={forwardedRef}
-        className={cx("h-12 w-28", className)}
+        className={cx("flex-1", className)}
         data-tremor-id="tremor-raw"
         {...other}
       >

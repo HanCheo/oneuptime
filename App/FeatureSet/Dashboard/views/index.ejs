@@ -230,8 +230,23 @@
   <!-- PWA Service Worker Registration -->
   <script>
     // Service Worker Registration for PWA with proper update handling
+    const isLocalDashboardHost =
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname === 'localhost';
+
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
+        if (isLocalDashboardHost) {
+          navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            registrations.forEach(function(registration) {
+              registration.unregister();
+            });
+          }).catch(function(error) {
+            console.log('OneUptime PWA: Local service worker cleanup failed', error);
+          });
+          return;
+        }
+
         navigator.serviceWorker.register('/dashboard/sw.js', {
           scope: '/'
         }).then(function(registration) {
