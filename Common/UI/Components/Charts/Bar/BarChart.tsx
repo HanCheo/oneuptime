@@ -26,7 +26,6 @@ export interface ComponentProps {
   xAxis: XAxis;
   yAxis: YAxis;
   sync: boolean;
-  heightInPx?: number | undefined;
   referenceLines?: Array<ChartReferenceLineProps> | undefined;
   showLegend?: boolean | undefined;
 }
@@ -62,10 +61,7 @@ const BarChartElement: FunctionComponent<BarInternalProps> = (
     });
 
   return (
-    <div
-      className="relative flex flex-1"
-      style={props.heightInPx ? { height: `${props.heightInPx}px` } : undefined}
-    >
+    <div className="relative flex flex-1">
       <BarChart
         data={records}
         tickGap={30}

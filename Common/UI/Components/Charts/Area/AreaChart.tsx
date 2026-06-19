@@ -37,7 +37,6 @@ export interface ComponentProps {
   yAxis: YAxis;
   curve: ChartCurve;
   sync: boolean;
-  heightInPx?: number | undefined;
   referenceLines?: Array<ChartReferenceLineProps> | undefined;
   exemplarPoints?: Array<ExemplarPoint> | undefined;
   onExemplarClick?: ((exemplar: ExemplarPoint) => void) | undefined;
@@ -129,10 +128,7 @@ const AreaChartElement: FunctionComponent<AreaInternalProps> = (
     typeof yAxisMaxOption === "number" ? { maxValue: yAxisMaxOption } : {};
 
   return (
-    <div
-      className="relative flex flex-1"
-      style={props.heightInPx ? { height: `${props.heightInPx}px` } : undefined}
-    >
+    <div className="relative flex flex-1">
       <AreaChart
         data={records}
         tickGap={30}
