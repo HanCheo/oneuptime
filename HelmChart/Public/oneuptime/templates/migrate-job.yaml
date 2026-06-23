@@ -8,6 +8,7 @@
   finishes creating the schema — set hook=true if you need the install to block.
 */ -}}
 {{- $useHook := .Values.migrate.hook }}
+{{- $migrateJobSuffix := include "oneuptime.image.tag" (dict "Values" .Values "ServiceName" "app") | lower | replace "." "-" | replace "_" "-" }}
 # =============================================================================
 # Database migration Job.
 #
@@ -23,7 +24,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ .Release.Name }}-migrate-{{ .Release.Revision }}
+  name: {{ .Release.Name }}-migrate-{{ $migrateJobSuffix }}
   namespace: {{ .Release.Namespace }}
   labels:
     app: {{ .Release.Name }}-migrate
