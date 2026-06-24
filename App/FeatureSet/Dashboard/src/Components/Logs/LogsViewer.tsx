@@ -399,6 +399,8 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
     Array<HistogramBucket>
   >([]);
   const [histogramLoading, setHistogramLoading] = useState<boolean>(false);
+  const [hasLoadedInitialItems, setHasLoadedInitialItems] =
+    useState<boolean>(false);
 
   // Facet state
   const [facetData, setFacetData] = useState<FacetData>({});
@@ -703,6 +705,7 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
 
         setLogs(listResult.data);
         setTotalCount(listResult.count);
+        setHasLoadedInitialItems(true);
 
         if (props.onCountChange) {
           props.onCountChange(listResult.count);
@@ -994,12 +997,18 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
   }, [fetchItems]);
 
   useEffect(() => {
+    if (!hasLoadedInitialItems) {
+      return;
+    }
     void fetchHistogram();
-  }, [fetchHistogram]);
+  }, [fetchHistogram, hasLoadedInitialItems]);
 
   useEffect(() => {
+    if (!hasLoadedInitialItems) {
+      return;
+    }
     void fetchFacets();
-  }, [fetchFacets]);
+  }, [fetchFacets, hasLoadedInitialItems]);
 
   useEffect(() => {
     void fetchSavedViews();

@@ -583,12 +583,20 @@ const LogsViewer: FunctionComponent<ComponentProps> = (
     void loadServices();
   }, [loadServices]);
 
-  // Load attributes eagerly for search bar suggestions
+  /*
+   * Attribute-key discovery is an expensive full-table scan on large log
+   * datasets. Defer it until the user actually starts an `@attribute` search
+   * instead of paying the cost on every page load.
+   */
   useEffect(() => {
+    const currentWord: string = (searchQuery.split(/\s+/).pop() || "").trim();
+    if (!currentWord.startsWith("@")) {
+      return;
+    }
     if (!attributesLoaded && !attributesLoading) {
       void loadAttributes();
     }
-  }, [attributesLoaded, attributesLoading, loadAttributes]);
+  }, [attributesLoaded, attributesLoading, loadAttributes, searchQuery]);
 
   /*
    * Lazily fetch values for the attribute the user is currently typing.
