@@ -276,9 +276,7 @@ const ChartGroup: FunctionComponent<ComponentProps> = (
 
   // When showing cards, use the grid layout
   const gridCols: string =
-    props.charts.length > 1
-      ? "lg:grid-cols-2 min-h-96"
-      : "lg:grid-cols-1 min-h-80";
+    props.charts.length > 1 ? "lg:grid-cols-2" : "lg:grid-cols-1";
 
   return (
     <>
