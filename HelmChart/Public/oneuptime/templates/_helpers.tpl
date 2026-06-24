@@ -413,6 +413,21 @@ its userlist at startup.
 {{- end }}
 {{- end }}
 
+{{- if $.Values.clickhouseColdTier.enabled }}
+- name: CLICKHOUSE_COLD_TIER_ENABLED
+  value: "true"
+- name: CLICKHOUSE_COLD_TIER_STORAGE_POLICY
+  value: {{ $.Values.clickhouseColdTier.storagePolicy | squote }}
+- name: CLICKHOUSE_COLD_TIER_VOLUME
+  value: {{ $.Values.clickhouseColdTier.volume | squote }}
+- name: CLICKHOUSE_COLD_TIER_METRICS_DAYS
+  value: {{ $.Values.clickhouseColdTier.metricsDays | squote }}
+- name: CLICKHOUSE_COLD_TIER_LOGS_DAYS
+  value: {{ $.Values.clickhouseColdTier.logsDays | squote }}
+- name: CLICKHOUSE_COLD_TIER_TRACES_DAYS
+  value: {{ $.Values.clickhouseColdTier.tracesDays | squote }}
+{{- end }}
+
 
 ## CLICKHOUSE SSL BLOCK
 {{- if or $chAltinity.enabled $.Values.clickhouse.enabled }}
