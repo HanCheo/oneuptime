@@ -58,6 +58,7 @@ import RangeStartAndEndDateTime, {
   RangeStartAndEndDateTimeUtil,
 } from "Common/Types/Time/RangeStartAndEndDateTime";
 import TimeRange from "Common/Types/Time/TimeRange";
+import { applyFacetFiltersToLogsAggregationRequest } from "./FacetFilterUtils";
 import InBetween from "Common/Types/BaseDatabase/InBetween";
 
 export interface ComponentProps {
@@ -753,7 +754,7 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
         const dateRange: InBetween<Date> =
           RangeStartAndEndDateTimeUtil.getStartAndEndDate(timeRange);
 
-        const requestData: JSONObject = {
+        let requestData: JSONObject = {
           startTime: dateRange.startValue.toISOString(),
           endTime: dateRange.endValue.toISOString(),
         } as JSONObject;
@@ -774,54 +775,10 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
           (requestData as any)["spanIds"] = spanIdStrings;
         }
 
-        // Pass active facet filters to the histogram so it reflects the current view
-        const severityValues: Set<string> | undefined =
-          appliedFacetFilters.get("severityText");
-
-        if (severityValues && severityValues.size > 0) {
-          (requestData as any)["severityTexts"] = Array.from(severityValues);
-        }
-
-        /*
-         * primaryEntityId and the virtual resource facets (hostId / dockerHostId /
-         * kubernetesClusterId) all read out of the same `primaryEntityId` column —
-         * merge them into a single serviceIds list so the histogram applies
-         * the union of selected resources.
-         */
-        const resourceFilterIds: Set<string> = new Set<string>();
-        for (const facetKey of [
-          "primaryEntityId",
-          "hostId",
-          "dockerHostId",
-          "podmanHostId",
-          "kubernetesClusterId",
-        ]) {
-          const values: Set<string> | undefined =
-            appliedFacetFilters.get(facetKey);
-          if (values) {
-            for (const value of values) {
-              resourceFilterIds.add(value);
-            }
-          }
-        }
-
-        if (resourceFilterIds.size > 0) {
-          (requestData as any)["serviceIds"] = Array.from(resourceFilterIds);
-        }
-
-        const traceFilterValues: Set<string> | undefined =
-          appliedFacetFilters.get("traceId");
-
-        if (traceFilterValues && traceFilterValues.size > 0) {
-          (requestData as any)["traceIds"] = Array.from(traceFilterValues);
-        }
-
-        const spanFilterValues: Set<string> | undefined =
-          appliedFacetFilters.get("spanId");
-
-        if (spanFilterValues && spanFilterValues.size > 0) {
-          (requestData as any)["spanIds"] = Array.from(spanFilterValues);
-        }
+        requestData = applyFacetFiltersToLogsAggregationRequest(
+          requestData,
+          appliedFacetFilters,
+        );
 
         if (logQueryAttributes) {
           (requestData as any)["attributes"] = logQueryAttributes;
@@ -867,7 +824,7 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
         const dateRange: InBetween<Date> =
           RangeStartAndEndDateTimeUtil.getStartAndEndDate(timeRange);
 
-        const requestData: JSONObject = {
+        let requestData: JSONObject = {
           startTime: dateRange.startValue.toISOString(),
           endTime: dateRange.endValue.toISOString(),
           facetKeys: [
@@ -903,6 +860,10 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
         if (logQueryEntityKeys) {
           (requestData as any)["entityKeys"] = logQueryEntityKeys;
         }
+        requestData = applyFacetFiltersToLogsAggregationRequest(
+          requestData,
+          appliedFacetFilters,
+        );
 
         /*
          * Only forward non-empty entries — an empty string would still match
@@ -942,6 +903,7 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
       logQueryAttributes,
       logQueryEntityKeys,
       facetSearchText,
+      appliedFacetFilters,
     ]);
 
   // --- Handlers (defined before effects that reference them) ---
@@ -1341,14 +1303,6 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
       },
       [appliedFacetFilters, disableLiveMode, rebuildFilterOptionsFromFacets],
     );
-
-  const handleFacetExclude: (_facetKey: string, _value: string) => void =
-    useCallback((_facetKey: string, _value: string): void => {
-      /*
-       * Exclusion filters are not yet supported in the Query type.
-       * This is a placeholder for future NOT-filter support.
-       */
-    }, []);
 
   const handleRemoveFilter: (facetKey: string, value: string) => void =
     useCallback(
@@ -1754,7 +1708,6 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
           facetData={facetData}
           facetLoading={facetLoading}
           onFacetInclude={handleFacetInclude}
-          onFacetExclude={handleFacetExclude}
           onFacetSearchChange={(facetKey: string, text: string) => {
             setFacetSearchText(
               (prev: Record<string, string>): Record<string, string> => {

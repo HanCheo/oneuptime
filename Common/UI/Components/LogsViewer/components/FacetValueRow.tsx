@@ -10,7 +10,7 @@ export interface FacetValueRowProps {
   color?: string | undefined;
   isActive?: boolean | undefined;
   onInclude: (value: string) => void;
-  onExclude: (value: string) => void;
+  onExclude?: ((value: string) => void) | undefined;
 }
 
 const FacetValueRow: FunctionComponent<FacetValueRowProps> = (
@@ -84,17 +84,19 @@ const FacetValueRow: FunctionComponent<FacetValueRowProps> = (
         </span>
       </div>
 
-      <button
-        type="button"
-        className="hidden h-5 w-5 items-center justify-center rounded text-[10px] text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 group-hover:flex"
-        onClick={(e: React.MouseEvent) => {
-          e.stopPropagation();
-          props.onExclude(props.value);
-        }}
-        title={`Exclude ${displayLabel}`}
-      >
-        -
-      </button>
+      {props.onExclude && (
+        <button
+          type="button"
+          className="hidden h-5 w-5 items-center justify-center rounded text-[10px] text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 group-hover:flex"
+          onClick={(e: React.MouseEvent) => {
+            e.stopPropagation();
+            props.onExclude?.(props.value);
+          }}
+          title={`Exclude ${displayLabel}`}
+        >
+          -
+        </button>
+      )}
     </div>
   );
 };

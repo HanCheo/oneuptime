@@ -16,7 +16,7 @@ export interface FacetSectionProps {
   values: Array<FacetValue>;
   initialVisibleCount?: number;
   onIncludeValue: (key: string, value: string) => void;
-  onExcludeValue: (key: string, value: string) => void;
+  onExcludeValue?: ((key: string, value: string) => void) | undefined;
   facetKey: string;
   valueDisplayMap?: Record<string, string> | undefined;
   valueColorMap?: Record<string, string> | undefined;
@@ -159,9 +159,13 @@ const FacetSection: FunctionComponent<FacetSectionProps> = (
                 onInclude={(value: string) => {
                   props.onIncludeValue(props.facetKey, value);
                 }}
-                onExclude={(value: string) => {
-                  props.onExcludeValue(props.facetKey, value);
-                }}
+                onExclude={
+                  props.onExcludeValue
+                    ? (value: string) => {
+                        props.onExcludeValue!(props.facetKey, value);
+                      }
+                    : undefined
+                }
               />
             );
           })}

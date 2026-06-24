@@ -1137,7 +1137,7 @@ const LogsViewer: FunctionComponent<ComponentProps> = (
               podmanHostMap={podmanHostMap}
               kubernetesClusterMap={kubernetesClusterMap}
               onIncludeFilter={props.onFacetInclude || (() => {})}
-              onExcludeFilter={props.onFacetExclude || (() => {})}
+              onExcludeFilter={props.onFacetExclude}
               activeFilters={props.activeFilters}
               savedViews={props.savedViews}
               selectedSavedViewId={props.selectedSavedViewId}
