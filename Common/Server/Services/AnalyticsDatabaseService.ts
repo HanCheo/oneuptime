@@ -219,6 +219,45 @@ export default class AnalyticsDatabaseService<
       database: this.database,
     });
   }
+  private getMutationOnClusterClause(): string {
+    return this.model.isDistributedTableEnabled() &&
+      this.model.distributedClusterName
+      ? ` ON CLUSTER ${this.model.distributedClusterName}`
+      : "";
+  }
+
+  private async addColumnToTable(
+    tableName: string,
+    column: AnalyticsTableColumn,
+  ): Promise<void> {
+    const databaseName: string = this.database.getDatasourceOptions().database!;
+    const statement: Statement = new Statement();
+    statement
+      .append(
+        `ALTER TABLE ${databaseName}.${tableName}${this.getMutationOnClusterClause()} ADD COLUMN IF NOT EXISTS `,
+      )
+      .append(column.key)
+      .append(SQL` `)
+      .append(this.statementGenerator.toFullColumnType(column));
+
+    if (column.codec) {
+      statement.append(
+        ` CODEC(${StatementGenerator.buildCodecString(column.codec)})`,
+      );
+    }
+
+    await this.execute(statement, MigrationExecuteOptions);
+  }
+
+  public async addColumnToDistributedTable(
+    column: AnalyticsTableColumn,
+  ): Promise<void> {
+    if (!this.model.distributedTableName) {
+      return;
+    }
+
+    await this.addColumnToTable(this.model.distributedTableName, column);
+  }
 
   @CaptureSpan()
   public async insertJsonRows(
@@ -241,12 +280,12 @@ export default class AnalyticsDatabaseService<
 
     const client: ClickhouseClient = this.getIngestClient();
 
-    const tableName: string = this.model.tableName;
+    const tableName: string = this.model.getWriteTableName();
 
     if (!tableName) {
       throw new Exception(
         ExceptionCode.BadDataException,
-        "Analytics model table name not configured",
+        "Analytics model write table name not configured",
       );
     }
 
@@ -487,20 +526,16 @@ export default class AnalyticsDatabaseService<
   public async addColumnInDatabase(
     column: AnalyticsTableColumn,
   ): Promise<void> {
-    const statement: Statement =
-      this.statementGenerator.toAddColumnStatement(column);
-    /*
-     * Schema-sync / migration-only path: route through the migration pool so a
-     * column add that backfills a DEFAULT/MATERIALIZED expression on a large
-     * table is not destroyed at the App pool's 58s socket-idle timeout.
-     */
-    await this.execute(statement, MigrationExecuteOptions);
+    await this.addColumnToTable(this.model.getSchemaTableName(), column);
 
     // Add skip index separately (ClickHouse requires ADD INDEX as a separate ALTER statement)
     const indexStatement: Statement | null =
       this.statementGenerator.toAddSkipIndexStatement(column);
     if (indexStatement) {
       await this.execute(indexStatement, MigrationExecuteOptions);
+    }
+    if (this.model.distributedTableName) {
+      await this.addColumnToDistributedTable(column);
     }
   }
 
@@ -526,6 +561,13 @@ export default class AnalyticsDatabaseService<
       this.statementGenerator.toDropColumnStatement(columnName),
       MigrationExecuteOptions,
     );
+    if (this.model.distributedTableName) {
+      const databaseName: string =
+        this.database.getDatasourceOptions().database!;
+      await this.execute(
+        `ALTER TABLE ${databaseName}.${this.model.distributedTableName}${this.getMutationOnClusterClause()} DROP COLUMN IF EXISTS ${columnName}`,
+      );
+    }
   }
 
   public async doesColumnExist(columnName: string): Promise<boolean> {
@@ -604,7 +646,7 @@ export default class AnalyticsDatabaseService<
     }
 
     await this.execute(
-      `ALTER TABLE ${tableName} MODIFY COLUMN ${data.columnName} ${data.columnType} CODEC(${data.codec}) SETTINGS mutations_sync=0`,
+      `ALTER TABLE ${tableName}${this.getMutationOnClusterClause()} MODIFY COLUMN ${data.columnName} ${data.columnType} CODEC(${data.codec}) SETTINGS mutations_sync=0`,
       MigrationExecuteOptions,
     );
     logger.info(
@@ -657,7 +699,7 @@ export default class AnalyticsDatabaseService<
     const databaseName: string =
       this.database!.getDatasourceOptions().database!;
 
-    const statement: Statement = SQL`SELECT primaryEntityId AS primaryEntityId, primaryEntityType AS primaryEntityType, count() AS rowCount, sum(byteSize(*)) AS estimatedBytes FROM ${databaseName}.${this.model.tableName} WHERE projectId = ${{
+    const statement: Statement = SQL`SELECT primaryEntityId AS primaryEntityId, primaryEntityType AS primaryEntityType, count() AS rowCount, sum(byteSize(*)) AS estimatedBytes FROM ${databaseName}.${this.model.getReadTableName()} WHERE projectId = ${{
       type: TableColumnType.ObjectID,
       value: data.projectId,
     }} AND ${timestampColumnName} >= ${{
@@ -1074,7 +1116,7 @@ export default class AnalyticsDatabaseService<
     statement
       .append(
         SQL`) as count
-            FROM ${databaseName}.${this.model.tableName}
+            FROM ${databaseName}.${this.model.getReadTableName()}
             WHERE TRUE `,
       )
       .append(whereStatement)
@@ -1148,7 +1190,7 @@ export default class AnalyticsDatabaseService<
     /* eslint-disable prettier/prettier */
     const statement: Statement = SQL`
             SELECT 1 as existsFlag
-            FROM ${databaseName}.${this.model.tableName}
+            FROM ${databaseName}.${this.model.getReadTableName()}
             WHERE TRUE `
       .append(whereStatement)
       .append(this.getRetentionReadFilter());
@@ -1191,7 +1233,7 @@ export default class AnalyticsDatabaseService<
     const statement: Statement = SQL``;
 
     statement.append(SQL`SELECT `.append(select.statement));
-    statement.append(SQL` FROM ${databaseName}.${this.model.tableName}`);
+    statement.append(SQL` FROM ${databaseName}.${this.model.getReadTableName()}`);
     statement
       .append(SQL` WHERE TRUE `)
       .append(whereStatement)
@@ -1297,7 +1339,7 @@ export default class AnalyticsDatabaseService<
     const statement: Statement = SQL``;
 
     statement.append(SQL`SELECT `.append(select.statement));
-    statement.append(SQL` FROM ${databaseName}.${this.model.tableName}`);
+    statement.append(SQL` FROM ${databaseName}.${this.model.getReadTableName()}`);
     statement
       .append(SQL` WHERE TRUE `)
       .append(whereStatement)
