@@ -282,7 +282,7 @@ const ChartGroup: FunctionComponent<ComponentProps> = (
     <>
       {renderMetricInfoModal()}
       <div
-        className={`grid grid-cols-1 ${gridCols} gap-4 space-y-4 lg:space-y-0`}
+        className={`grid grid-cols-1 ${gridCols} gap-4 space-y-4 lg:space-y-0 min-h-80`}
       >
         {props.charts.map((chart: Chart, index: number) => {
           return (
