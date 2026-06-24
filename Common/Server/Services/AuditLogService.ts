@@ -1,7 +1,7 @@
 import ClickhouseDatabase from "../Infrastructure/ClickhouseDatabase";
 import AnalyticsDatabaseService from "./AnalyticsDatabaseService";
 import ProjectService from "./ProjectService";
-import { IsBillingEnabled, IsEnterpriseEdition } from "../EnvironmentConfig";
+import { IsBillingEnabled } from "../EnvironmentConfig";
 import logger from "../Utils/Logger";
 import AuditLog from "../../Models/AnalyticsModels/AuditLog";
 import BaseModel from "../../Models/DatabaseModels/DatabaseBaseModel/DatabaseBaseModel";
@@ -278,19 +278,11 @@ export class AuditLogService extends AnalyticsDatabaseService<AuditLog> {
       return false;
     }
 
-    if (IsEnterpriseEdition) {
-      return true;
-    }
-
     if (IsBillingEnabled) {
       return settings.planName === PlanType.Enterprise;
     }
 
-    /*
-     * Neither enterprise edition nor billing is enabled — audit logs are not
-     * available on the free self-hosted build.
-     */
-    return false;
+    return true;
   }
 
   private isSystemEvent(props: DatabaseCommonInteractionProps): boolean {
