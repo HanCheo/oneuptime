@@ -9,118 +9,236 @@ import Dictionary from "../../../Types/Dictionary";
 export type AttributeType = string | number | boolean | null;
 
 export default class TelemetryUtil {
+  private static readonly METRIC_TYPE_BATCH_SIZE: number = 500;
+
   @CaptureSpan()
   public static async indexMetricNameServiceNameMap(data: {
     projectId: ObjectID;
     metricNameServiceNameMap: Dictionary<MetricType>;
   }): Promise<void> {
-    for (const metricName of Object.keys(data.metricNameServiceNameMap)) {
-      // fetch metric
-      const metricType: MetricType | null = await MetricTypeService.findOneBy({
-        query: {
-          projectId: data.projectId,
-          name: metricName,
-        },
-        select: {
-          services: true,
-          name: true,
-          description: true,
-          unit: true,
-        },
-        props: {
-          isRoot: true,
-        },
-      });
+    const metricNames: Array<string> = Object.keys(data.metricNameServiceNameMap);
 
+    if (metricNames.length === 0) {
+      return;
+    }
+
+    const existingMetricTypesByName: Map<
+      string,
+      {
+        id: string;
+        description: string;
+        unit: string;
+        serviceIds: Set<string>;
+      }
+    > = await this.fetchExistingMetricTypes({
+      projectId: data.projectId,
+      metricNames,
+    });
+
+    const missingServiceLinks: Array<{
+      metricTypeId: string;
+      serviceId: string;
+    }> = [];
+
+    for (const metricName of metricNames) {
       const metricTypeInMap: MetricType =
         data.metricNameServiceNameMap[metricName]!;
+      const desiredDescription: string = metricTypeInMap.description || "";
+      const desiredUnit: string = metricTypeInMap.unit || "";
+      const desiredServiceIds: Array<string> = this.getServiceIds(
+        metricTypeInMap.services || [],
+      );
 
-      // check if services are same as the ones in the map
-      const servicesInMap: Array<ObjectID> =
-        metricTypeInMap?.services?.map((service: Service) => {
-          return service.id!;
-        }) || [];
-
-      if (metricType) {
-        if (!metricType.services) {
-          metricType.services = [];
-        }
-
-        const serviceIds: Array<ObjectID> = metricType.services!.map(
-          (service: Service) => {
-            return service.id!;
-          },
-        );
-
-        let isSame: boolean = true;
-
-        // check if description is same
-        if (metricType.description !== metricTypeInMap.description) {
-          isSame = false;
-          metricType.description = metricTypeInMap.description || "";
-        }
-
-        // check if unit is same
-        if (metricType.unit !== metricTypeInMap.unit) {
-          isSame = false;
-          metricType.unit = metricTypeInMap.unit || "";
-        }
-
-        // check if services are same
-
-        for (const serviceId of servicesInMap) {
-          if (
-            serviceIds.filter((existingServiceId: ObjectID) => {
-              return existingServiceId.toString() === serviceId.toString();
-            }).length === 0
-          ) {
-            isSame = false;
-            // add the service id to the list
-            const service: Service = new Service();
-            service.id = serviceId;
-            metricType.services!.push(service);
+      let existingMetricType:
+        | {
+            id: string;
+            description: string;
+            unit: string;
+            serviceIds: Set<string>;
           }
-        }
+        | undefined = existingMetricTypesByName.get(metricName);
 
-        // if its not the same then update the metric type
+      if (!existingMetricType) {
+        const metricTypeToCreate: MetricType = new MetricType();
+        metricTypeToCreate.name = metricName;
+        metricTypeToCreate.description = desiredDescription;
+        metricTypeToCreate.unit = desiredUnit;
+        metricTypeToCreate.projectId = data.projectId;
+        metricTypeToCreate.services = [];
 
-        if (!isSame) {
-          // update metric type
-          await MetricTypeService.updateOneById({
-            id: metricType.id!,
-            data: {
-              services: metricType.services || [],
-              description: metricTypeInMap.description || "",
-              unit: metricTypeInMap.unit || "",
-            },
-            props: {
-              isRoot: true,
-            },
-          } as any);
-        }
-      } else {
-        // create metric type
-        const metricType: MetricType = new MetricType();
-        metricType.name = metricName;
-        metricType.description = metricTypeInMap.description || "";
-        metricType.unit = metricTypeInMap.unit || "";
-        metricType.projectId = data.projectId;
-        metricType.services = [];
-
-        for (const serviceId of servicesInMap) {
-          const service: Service = new Service();
-          service.id = serviceId;
-          metricType.services!.push(service);
-        }
-
-        // save metric type
-        await MetricTypeService.create({
-          data: metricType,
+        const createdMetricType: MetricType = await MetricTypeService.create({
+          data: metricTypeToCreate,
           props: {
             isRoot: true,
           },
         });
+
+        existingMetricType = {
+          id: createdMetricType.id!.toString(),
+          description: desiredDescription,
+          unit: desiredUnit,
+          serviceIds: new Set<string>(),
+        };
+
+        existingMetricTypesByName.set(metricName, existingMetricType);
+      } else if (
+        existingMetricType.description !== desiredDescription ||
+        existingMetricType.unit !== desiredUnit
+      ) {
+        await MetricTypeService.updateColumnsByIdWithoutHooks({
+          id: new ObjectID(existingMetricType.id),
+          data: {
+            description: desiredDescription,
+            unit: desiredUnit,
+          },
+        });
+
+        existingMetricType.description = desiredDescription;
+        existingMetricType.unit = desiredUnit;
       }
+
+      for (const serviceId of desiredServiceIds) {
+        if (!existingMetricType.serviceIds.has(serviceId)) {
+          missingServiceLinks.push({
+            metricTypeId: existingMetricType.id,
+            serviceId,
+          });
+          existingMetricType.serviceIds.add(serviceId);
+        }
+      }
+    }
+
+    await this.insertMetricTypeServiceLinks(missingServiceLinks);
+  }
+
+  private static getServiceIds(services: Array<Service>): Array<string> {
+    return Array.from(
+      new Set(
+        services
+          .map((service: Service) => {
+            return service.id?.toString() || "";
+          })
+          .filter((serviceId: string) => {
+            return Boolean(serviceId);
+          }),
+      ),
+    );
+  }
+
+  private static async fetchExistingMetricTypes(data: {
+    projectId: ObjectID;
+    metricNames: Array<string>;
+  }): Promise<
+    Map<
+      string,
+      {
+        id: string;
+        description: string;
+        unit: string;
+        serviceIds: Set<string>;
+      }
+    >
+  > {
+    const existingMetricTypesByName: Map<
+      string,
+      {
+        id: string;
+        description: string;
+        unit: string;
+        serviceIds: Set<string>;
+      }
+    > = new Map();
+
+    const repository = MetricTypeService.getRepository();
+
+    for (
+      let offset: number = 0;
+      offset < data.metricNames.length;
+      offset += this.METRIC_TYPE_BATCH_SIZE
+    ) {
+      const metricNamesChunk: Array<string> = data.metricNames.slice(
+        offset,
+        offset + this.METRIC_TYPE_BATCH_SIZE,
+      );
+
+      const rows: Array<{
+        metricTypeId: string;
+        name: string;
+        description: string | null;
+        unit: string | null;
+        serviceId: string | null;
+      }> = await repository.manager.query(
+        `
+          SELECT
+            mt."_id" AS "metricTypeId",
+            mt."name" AS "name",
+            mt."description" AS "description",
+            mt."unit" AS "unit",
+            mts."serviceId" AS "serviceId"
+          FROM "MetricType" mt
+          LEFT JOIN "MetricTypeService" mts
+            ON mts."metricTypeId" = mt."_id"
+          WHERE mt."projectId" = $1
+            AND mt."name" = ANY($2::varchar[])
+        `,
+        [data.projectId.toString(), metricNamesChunk],
+      );
+
+      for (const row of rows) {
+        if (!existingMetricTypesByName.has(row.name)) {
+          existingMetricTypesByName.set(row.name, {
+            id: row.metricTypeId,
+            description: row.description || "",
+            unit: row.unit || "",
+            serviceIds: new Set<string>(),
+          });
+        }
+
+        if (row.serviceId) {
+          existingMetricTypesByName.get(row.name)!.serviceIds.add(row.serviceId);
+        }
+      }
+    }
+
+    return existingMetricTypesByName;
+  }
+
+  private static async insertMetricTypeServiceLinks(
+    links: Array<{ metricTypeId: string; serviceId: string }>,
+  ): Promise<void> {
+    if (links.length === 0) {
+      return;
+    }
+
+    const repository = MetricTypeService.getRepository();
+
+    for (
+      let offset: number = 0;
+      offset < links.length;
+      offset += this.METRIC_TYPE_BATCH_SIZE
+    ) {
+      const chunk: Array<{ metricTypeId: string; serviceId: string }> =
+        links.slice(offset, offset + this.METRIC_TYPE_BATCH_SIZE);
+      const params: Array<string> = [];
+      const valueFragments: Array<string> = [];
+
+      for (const link of chunk) {
+        params.push(link.metricTypeId, link.serviceId);
+        const metricTypeParamIndex: number = params.length - 1;
+        const serviceParamIndex: number = params.length;
+        valueFragments.push(
+          `($${metricTypeParamIndex}, $${serviceParamIndex})`,
+        );
+      }
+
+      await repository.manager.query(
+        `
+          INSERT INTO "MetricTypeService" ("metricTypeId", "serviceId")
+          VALUES ${valueFragments.join(", ")}
+          ON CONFLICT ("metricTypeId", "serviceId") DO NOTHING
+        `,
+        params,
+      );
     }
   }
 
