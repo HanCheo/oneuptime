@@ -1,5 +1,5 @@
-import Includes from "Common/Types/BaseDatabase/Includes";
 import SortOrder from "Common/Types/BaseDatabase/SortOrder";
+import Includes from "Common/Types/BaseDatabase/Includes";
 import ObjectID from "Common/Types/ObjectID";
 import ErrorMessage from "Common/UI/Components/ErrorMessage/ErrorMessage";
 import LogsViewer, {
@@ -58,7 +58,10 @@ import RangeStartAndEndDateTime, {
   RangeStartAndEndDateTimeUtil,
 } from "Common/Types/Time/RangeStartAndEndDateTime";
 import TimeRange from "Common/Types/Time/TimeRange";
-import { applyFacetFiltersToLogsAggregationRequest } from "./FacetFilterUtils";
+import {
+  applyFacetFiltersToLogQuery,
+  applyFacetFiltersToLogsAggregationRequest,
+} from "./FacetFilterUtils";
 import InBetween from "Common/Types/BaseDatabase/InBetween";
 
 export interface ComponentProps {
@@ -435,14 +438,16 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
       dateRange.startValue,
       dateRange.endValue,
     );
-    setFilterOptions(base);
+    setFilterOptions(applyFacetFiltersToLogQuery(base, appliedFacetFilters));
     setPage(1);
   }, [
-    props.serviceIds,
-    props.traceIds,
-    props.spanIds,
+    appliedFacetFilters,
+    serviceIdStrings,
+    traceIdStrings,
+    spanIdStrings,
     props.logQuery,
     props.entityScope,
+    timeRange,
   ]);
 
   /*
@@ -1191,7 +1196,6 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
     (facets: Map<string, Set<string>>): Query<Log> => {
       const updatedFilter: Query<Log> = buildBaseQuery(props);
 
-      // Preserve the current time filter
       const dateRange: InBetween<Date> =
         RangeStartAndEndDateTimeUtil.getStartAndEndDate(timeRange);
       (updatedFilter as any).time = new InBetween<Date>(
@@ -1199,71 +1203,7 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
         dateRange.endValue,
       );
 
-      /*
-       * primaryEntityId, hostId, dockerHostId and kubernetesClusterId facets
-       * all filter the same underlying `primaryEntityId` column — the
-       * discriminator only matters at facet computation time. Coalesce
-       * any selected values across these facets into a single
-       * `primaryEntityId IN (...)` predicate.
-       */
-      const resourceIds: Set<string> = new Set<string>();
-      const resourceFacetKeys: Set<string> = new Set<string>([
-        "primaryEntityId",
-        "hostId",
-        "dockerHostId",
-        "podmanHostId",
-        "kubernetesClusterId",
-      ]);
-
-      for (const [key, values] of facets.entries()) {
-        if (values.size === 0) {
-          continue;
-        }
-
-        if (resourceFacetKeys.has(key)) {
-          for (const value of values) {
-            resourceIds.add(value);
-          }
-          continue;
-        }
-
-        /*
-         * Keys prefixed with `attributes.` are telemetry attribute filters,
-         * which live under `query.attributes[<suffix>]` rather than as
-         * top-level columns.
-         */
-        if (key.startsWith("attributes.")) {
-          const attrKey: string = key.substring("attributes.".length);
-          const existing: Record<string, unknown> =
-            ((updatedFilter as any).attributes as Record<string, unknown>) ||
-            {};
-          existing[attrKey] =
-            values.size === 1
-              ? Array.from(values)[0]!
-              : new Includes(Array.from(values));
-          (updatedFilter as any).attributes = existing;
-          continue;
-        }
-
-        if (values.size === 1) {
-          // Single value: use direct equality
-          const singleValue: string = Array.from(values)[0]!;
-          (updatedFilter as any)[key] = singleValue;
-        } else {
-          // Multiple values: use Includes
-          (updatedFilter as any)[key] = new Includes(Array.from(values));
-        }
-      }
-
-      if (resourceIds.size === 1) {
-        (updatedFilter as any).primaryEntityId = Array.from(resourceIds)[0]!;
-      } else if (resourceIds.size > 1) {
-        (updatedFilter as any).primaryEntityId = new Includes(
-          Array.from(resourceIds),
-        );
-      }
-
-      return updatedFilter;
+      return applyFacetFiltersToLogQuery(updatedFilter, facets);
     },
     [props, timeRange],
   );

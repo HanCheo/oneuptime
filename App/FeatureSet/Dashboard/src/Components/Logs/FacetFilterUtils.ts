@@ -1,4 +1,7 @@
 import type { JSONObject } from "Common/Types/JSON";
+import Includes from "Common/Types/BaseDatabase/Includes";
+import Query from "Common/Types/BaseDatabase/Query";
+import Log from "Common/Models/AnalyticsModels/Log";
 
 export const LOG_RESOURCE_FACET_KEYS: Array<string> = [
   "primaryEntityId",
@@ -82,4 +85,59 @@ export function applyFacetFiltersToLogsAggregationRequest(
   mergeValues(nextRequestData, "spanIds", appliedFacetFilters.get("spanId"));
 
   return nextRequestData;
+}
+
+export function applyFacetFiltersToLogQuery(
+  baseQuery: Query<Log>,
+  appliedFacetFilters: Map<string, Set<string>>,
+): Query<Log> {
+  const updatedFilter: Query<Log> = {
+    ...(baseQuery as JSONObject),
+  } as Query<Log>;
+
+  const resourceIds: Set<string> = new Set<string>();
+
+  for (const [key, values] of appliedFacetFilters.entries()) {
+    if (values.size === 0) {
+      continue;
+    }
+
+    if (LOG_RESOURCE_FACET_KEYS.includes(key)) {
+      for (const value of values) {
+        resourceIds.add(value);
+      }
+      continue;
+    }
+
+    if (key.startsWith("attributes.")) {
+      const attrKey: string = key.substring("attributes.".length);
+      const existing: Record<string, unknown> =
+        ((updatedFilter as JSONObject)["attributes"] as Record<
+          string,
+          unknown
+        >) || {};
+      existing[attrKey] =
+        values.size === 1
+          ? Array.from(values)[0]!
+          : new Includes(Array.from(values));
+      (updatedFilter as JSONObject)["attributes"] = existing as never;
+      continue;
+    }
+
+    (updatedFilter as JSONObject)[key] =
+      values.size === 1
+        ? Array.from(values)[0]!
+        : new Includes(Array.from(values));
+  }
+
+  if (resourceIds.size === 1) {
+    (updatedFilter as JSONObject)["primaryEntityId"] =
+      Array.from(resourceIds)[0]!;
+  } else if (resourceIds.size > 1) {
+    (updatedFilter as JSONObject)["primaryEntityId"] = new Includes(
+      Array.from(resourceIds),
+    ) as never;
+  }
+
+  return updatedFilter;
 }
