@@ -127,24 +127,20 @@ export default class StatementGenerator<TBaseModel extends AnalyticsBaseModel> {
      * in single-node mode, leaving the original statement unchanged.
      */
     /* eslint-disable prettier/prettier */
-    const statement: Statement = SQL`
-            ALTER TABLE ${this.database.getDatasourceOptions().database!}.${getStorageTableName(
-              this.model.tableName,
-            )}`
+    const statement: Statement = new Statement();
+    statement
+      .append(
+        `ALTER TABLE ${this.database.getDatasourceOptions().database!}.${getStorageTableName(
+          this.model.tableName,
+        )}`,
+      )
       .append(onClusterClause())
-      .append(
-        SQL`
-            UPDATE `,
-      )
+      .append(` UPDATE `)
       .append(setStatement)
-      .append(
-        SQL`
-            WHERE TRUE `,
-      )
+      .append(` WHERE TRUE `)
       .append(whereStatement);
-    /* eslint-enable prettier/prettier */
 
-    logger.debug(`${this.model.tableName} Update Statement`);
+    logger.debug(`${this.model.getMutationTableName()} Update Statement`);
     logger.debug(statement);
 
     return statement;
@@ -216,7 +212,7 @@ export default class StatementGenerator<TBaseModel extends AnalyticsBaseModel> {
 
     const statement: string = `INSERT INTO ${
       this.database.getDatasourceOptions().database
-    }.${this.model.tableName} 
+    }.${this.model.getWriteTableName()} 
         ( 
             ${columnNames.join(", ")}
         ) SETTINGS async_insert=1, wait_for_async_insert=0
@@ -224,7 +220,7 @@ export default class StatementGenerator<TBaseModel extends AnalyticsBaseModel> {
         ${this.getValuesStatement(records)}
         `;
 
-    logger.debug(`${this.model.tableName} Create Statement`);
+    logger.debug(`${this.model.getWriteTableName()} Create Statement`);
     logger.debug(statement);
 
     return statement;
@@ -1204,9 +1200,9 @@ export default class StatementGenerator<TBaseModel extends AnalyticsBaseModel> {
   }
 
   public getColumnTypesStatement(columnName: string): string {
-    return `SELECT type FROM system.columns WHERE table = '${
-      this.model.tableName
-    }' AND database = '${
+    return `SELECT type FROM system.columns WHERE table = '${getStorageTableName(
+      this.model.tableName,
+    )}' AND database = '${
       this.database.getDatasourceOptions().database
     }' AND name = '${columnName}'`;
   }
@@ -1220,7 +1216,7 @@ export default class StatementGenerator<TBaseModel extends AnalyticsBaseModel> {
       this.database.getDatasourceOptions().database
     }.${getStorageTableName(
       this.model.tableName,
-    )} RENAME COLUMN IF EXISTS ${oldColumnName} TO ${newColumnName}`;
+    )}${onClusterClause()} RENAME COLUMN IF EXISTS ${oldColumnName} TO ${newColumnName}`;
 
     return SQL`${statement}`;
   }
@@ -1411,12 +1407,12 @@ export default class StatementGenerator<TBaseModel extends AnalyticsBaseModel> {
   }
 
   public toDoesColumnExistStatement(columnName: string): string {
-    const statement: string = `SELECT name FROM system.columns WHERE table = '${
-      this.model.tableName
-    }' AND database = '${this.database.getDatasourceOptions()
+    const statement: string = `SELECT name FROM system.columns WHERE table = '${getStorageTableName(
+      this.model.tableName,
+    )}' AND database = '${this.database.getDatasourceOptions()
       .database!}' AND name = '${columnName}'`;
 
-    logger.debug(`${this.model.tableName} Does Column Exist Statement`);
+    logger.debug(`${this.model.getSchemaTableName()} Does Column Exist Statement`);
     logger.debug(statement);
 
     return statement;
@@ -1458,8 +1454,7 @@ export default class StatementGenerator<TBaseModel extends AnalyticsBaseModel> {
       .append(" ADD COLUMN IF NOT EXISTS ")
       .append(columnDef);
 
-    logger.debug(`${this.model.tableName} Add Column Statement`);
-    logger.debug(statement);
+    logger.debug(`${this.model.getSchemaTableName()} Add Column Statement`);
 
     return statement;
   }
@@ -1495,7 +1490,7 @@ export default class StatementGenerator<TBaseModel extends AnalyticsBaseModel> {
       `ALTER TABLE ${databaseName}.${getStorageTableName(this.model.tableName)}${onClusterClause()} ADD INDEX IF NOT EXISTS ${idx.name} ${columnExpr} TYPE ${idx.type}${paramsStr} GRANULARITY ${idx.granularity}`,
     );
 
-    logger.debug(`${this.model.tableName} Add Skip Index Statement`);
+    logger.debug(`${this.model.getSchemaTableName()} Add Skip Index Statement`);
     logger.debug(statement);
 
     return statement;
@@ -1505,7 +1500,7 @@ export default class StatementGenerator<TBaseModel extends AnalyticsBaseModel> {
     const databaseName: string = this.database.getDatasourceOptions().database!;
     const statement: string = `ALTER TABLE ${databaseName}.${getStorageTableName(this.model.tableName)}${onClusterClause()} DROP INDEX IF EXISTS ${indexName}`;
 
-    logger.debug(`${this.model.tableName} Drop Skip Index Statement`);
+    logger.debug(`${this.model.getSchemaTableName()} Drop Skip Index Statement`);
     logger.debug(statement);
 
     return statement;
@@ -1517,7 +1512,7 @@ export default class StatementGenerator<TBaseModel extends AnalyticsBaseModel> {
       this.model.tableName,
     )}${onClusterClause()} DROP COLUMN IF EXISTS ${columnName}`;
 
-    logger.debug(`${this.model.tableName} Drop Column Statement`);
+    logger.debug(`${this.model.getSchemaTableName()} Drop Column Statement`);
     logger.debug(statement);
 
     return statement;
@@ -1551,8 +1546,9 @@ export default class StatementGenerator<TBaseModel extends AnalyticsBaseModel> {
 
     const partitionKey: string = this.model.partitionKey;
 
-    const statement: Statement = SQL`
-            CREATE TABLE IF NOT EXISTS ${databaseName}.${storageTableName}`
+    const statement: Statement = new Statement();
+    statement
+      .append(`CREATE TABLE IF NOT EXISTS ${databaseName}.${storageTableName}`)
       /*
        * ON CLUSTER is appended as RAW SQL — the SQL tag turns every ${..}
        * interpolation into a {pN:Identifier} parameter, which would wrongly
@@ -1560,21 +1556,11 @@ export default class StatementGenerator<TBaseModel extends AnalyticsBaseModel> {
        * onCluster is "" in single-node mode, so this is a no-op there.
        */
       .append(onCluster)
-      .append(
-        SQL`
-            (\n`,
-      )
+      .append(` (\n`)
       .append(columnsStatement)
-      .append(
-        SQL`
-            )
-            ENGINE = `,
-      )
-      .append(tableEngineStatement).append(`
-        PARTITION BY (${partitionKey})
-        `).append(SQL`
-            PRIMARY KEY (`);
-
+      .append(`\n)\nENGINE = `)
+      .append(tableEngineStatement)
+      .append(`\nPARTITION BY (${partitionKey})\nPRIMARY KEY (`);
     for (let i: number = 0; i < this.model.primaryKeys.length; i++) {
       const key: string = this.model.primaryKeys[i]!;
       if (i !== 0) {
@@ -1602,21 +1588,29 @@ export default class StatementGenerator<TBaseModel extends AnalyticsBaseModel> {
     }
 
     /*
-     * Append table-level SETTINGS if specified (e.g. ttl_only_drop_parts = 1
-     * so TTL drops whole time-partitions instead of rewriting parts). In
-     * cluster mode the non-replicated dedup window is rewritten to its
-     * replicated equivalent so insert idempotency survives.
+     * Append table-level SETTINGS if specified. `storagePolicy` is rendered
+     * first so product-managed cold-tier semantics stay explicit. The
+     * free-form `tableSettings` string remains for low-level ClickHouse knobs
+     * (e.g. ttl_only_drop_parts = 1); in cluster mode it is rewritten from
+     * non_replicated_deduplication_window to replicated_deduplication_window
+     * so insert idempotency survives on Replicated* engines.
      */
-    const tableSettings: string | undefined = adaptTableSettingsForStorage(
-      this.model.tableSettings,
-    );
-    if (tableSettings) {
-      statement.append(`\nSETTINGS ${tableSettings}`);
+    const tableSettings: Array<string> = [];
+    if (this.model.storagePolicy) {
+      tableSettings.push(`storage_policy = '${this.model.storagePolicy}'`);
+    }
+    const adaptedTableSettings: string | undefined =
+      adaptTableSettingsForStorage(this.model.tableSettings);
+    if (adaptedTableSettings) {
+      tableSettings.push(adaptedTableSettings);
+    }
+    if (tableSettings.length > 0) {
+      statement.append(`\nSETTINGS ${tableSettings.join(", ")}`);
     }
 
     /* eslint-enable prettier/prettier */
 
-    logger.debug(`${this.model.tableName} Table Create Statement`);
+    logger.debug(`${this.model.getSchemaTableName()} Table Create Statement`);
     logger.debug(statement);
 
     return statement;

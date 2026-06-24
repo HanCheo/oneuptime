@@ -67,6 +67,33 @@ describe("StatementGenerator", () => {
     }
   }
 
+  class ShardedTestModel extends AnalyticsBaseModel {
+    public constructor() {
+      super({
+        tableName: "MetricItemV3",
+        distributedTableName: "MetricItemV3Distributed",
+        distributedClusterName: "ou",
+        distributedShardingKey: "cityHash64(projectId)",
+        singularName: "<singular-name>",
+        pluralName: "<plural-name>",
+        tableColumns: [
+          new AnalyticsTableColumn({
+            key: "projectId",
+            title: "<title>",
+            description: "<description>",
+            required: true,
+            type: TableColumnType.ObjectID,
+          }),
+        ],
+        crudApiPath: new Route("route"),
+        primaryKeys: ["projectId"],
+        sortKeys: ["projectId"],
+        partitionKey: "projectId",
+        tableEngine: AnalyticsTableEngine.MergeTree,
+      });
+    }
+  }
+
   let generator: StatementGenerator<TestModel>;
   beforeEach(async () => {
     generator = new StatementGenerator<TestModel>({
@@ -111,17 +138,10 @@ describe("StatementGenerator", () => {
       );
       expect(jest.mocked(logger.debug)).toHaveBeenNthCalledWith(2, statement);
 
-      /* eslint-disable prettier/prettier */
-      // Cluster mode: mutation targets the local table and dispatches ON CLUSTER.
-      expectStatement(
-        statement,
-        SQL`
-                ALTER TABLE ${"oneuptime"}.${"<table-name>Local"} ON CLUSTER 'oneuptime'
-                UPDATE <set-statement>
-                WHERE TRUE <where-statement>
-            `,
+      expect(statement.query.replace(/\s+/g, " ").trim()).toBe(
+        "ALTER TABLE oneuptime.<table-name>Local ON CLUSTER 'oneuptime' UPDATE <set-statement> WHERE TRUE <where-statement>",
       );
-      /* eslint-enable prettier/prettier */
+      expect(statement.query_params).toStrictEqual({});
     });
   });
 
@@ -1108,33 +1128,99 @@ describe("StatementGenerator", () => {
       );
       expect(jest.mocked(logger.debug)).toHaveBeenNthCalledWith(2, statement);
 
-      /* eslint-disable prettier/prettier */
-      // Cluster mode: the local <table>Local table, Replicated engine, ON CLUSTER.
-      const expectedStatement: Statement = SQL`
-            CREATE TABLE IF NOT EXISTS ${"oneuptime"}.${"<table-name>Local"} ON CLUSTER 'oneuptime'
-    (
-        <columns-create-statement>
-    )
-    ENGINE = ReplicatedMergeTree
-PARTITION BY (column_ObjectID)
-
-    PRIMARY KEY (${"column_ObjectID"})
-    ORDER BY (${"column_ObjectID"})
-    `;
-      /* eslint-enable prettier/prettier */
-
-      // Normalize whitespace for comparison to avoid formatting issues
       const normalizeWhitespace: (s: string) => string = (
         s: string,
       ): string => {
         return s.replace(/\s+/g, " ").trim();
       };
       expect(normalizeWhitespace(statement.query)).toBe(
-        normalizeWhitespace(expectedStatement.query),
+        normalizeWhitespace(`
+          CREATE TABLE IF NOT EXISTS oneuptime.<table-name>Local ON CLUSTER 'oneuptime'
+          (
+              <columns-create-statement>
+          )
+          ENGINE = ReplicatedMergeTree
+          PARTITION BY (column_ObjectID)
+          PRIMARY KEY ({p0:Identifier})
+          ORDER BY ({p1:Identifier})
+        `),
       );
-      expect(statement.query_params).toStrictEqual(
-        expectedStatement.query_params,
+      expect(statement.query_params).toStrictEqual({
+        p0: "column_ObjectID",
+        p1: "column_ObjectID",
+      });
+    });
+
+    test("should append storage policy before table settings", () => {
+      generator.model.storagePolicy = "tiered";
+      generator.model.tableSettings = "ttl_only_drop_parts = 1";
+      generator.model.ttlExpression =
+        "time + INTERVAL 7 DAY TO VOLUME 's3_cold', retentionDate DELETE";
+
+      const statement: Statement = generator.toTableCreateStatement();
+
+      const normalizeWhitespace: (s: string) => string = (
+        s: string,
+      ): string => {
+        return s.replace(/\s+/g, " ").trim();
+      };
+
+      expect(normalizeWhitespace(statement.query)).toContain(
+        normalizeWhitespace(
+          "TTL time + INTERVAL 7 DAY TO VOLUME 's3_cold', retentionDate DELETE SETTINGS storage_policy = 'tiered', ttl_only_drop_parts = 1",
+        ),
       );
+    });
+  });
+
+  describe("distributed telemetry tables", () => {
+    beforeEach(() => {
+      process.env["CLICKHOUSE_CLUSTER_NAME"] = "ou";
+      process.env["CLICKHOUSE_SHARDING_KEY"] = "cityHash64(projectId)";
+    });
+
+    afterEach(() => {
+      delete process.env["CLICKHOUSE_CLUSTER_NAME"];
+      delete process.env["CLICKHOUSE_SHARDING_KEY"];
+    });
+
+    test("creates replicated local table DDL on cluster", () => {
+      const shardedGenerator: StatementGenerator<ShardedTestModel> =
+        new StatementGenerator<ShardedTestModel>({
+          modelType: ShardedTestModel,
+          database: ClickhouseAppInstance,
+        });
+
+      const statement: Statement = shardedGenerator.toTableCreateStatement();
+      const normalizedQuery: string = statement.query
+        .replace(/\s+/g, " ")
+        .trim();
+
+      expect(normalizedQuery).toContain(
+        "CREATE TABLE IF NOT EXISTS oneuptime.MetricItemV3Local ON CLUSTER 'ou'",
+      );
+      expect(statement.query_params).toStrictEqual({
+        p0: "projectId",
+        p1: "projectId",
+      });
+      expect(normalizedQuery).toContain("ENGINE = ReplicatedMergeTree");
+    });
+
+    test("creates distributed wrapper table DDL", () => {
+      const shardedGenerator: StatementGenerator<ShardedTestModel> =
+        new StatementGenerator<ShardedTestModel>({
+          modelType: ShardedTestModel,
+          database: ClickhouseAppInstance,
+        });
+
+      const statement: Statement | null =
+        shardedGenerator.toDistributedTableCreateStatement();
+
+      expect(statement).not.toBeNull();
+      expect(statement!.query.replace(/\s+/g, " ").trim()).toBe(
+        "CREATE OR REPLACE TABLE oneuptime.MetricItemV3 ON CLUSTER 'ou' AS oneuptime.MetricItemV3Local ENGINE = Distributed('ou', oneuptime, MetricItemV3Local, cityHash64(projectId))",
+      );
+      expect(statement!.query_params).toStrictEqual({});
     });
   });
 });

@@ -32,11 +32,19 @@ type ExistingColumn = {
 export default class AnalyticsTableManagement {
   public static async createTables(): Promise<void> {
     for (const service of AnalyticsServices) {
-      // create a table if it does not exist
+      // create the local storage table first
       await service.execute(
         service.statementGenerator.toTableCreateStatement(),
         MigrationExecuteOptions,
       );
+
+      const distributedTableStatement: ReturnType<
+        typeof service.statementGenerator.toDistributedTableCreateStatement
+      > = service.statementGenerator.toDistributedTableCreateStatement();
+
+      if (distributedTableStatement) {
+        await service.execute(distributedTableStatement);
+      }
 
       /*
        * Self-heal column drift. `CREATE TABLE IF NOT EXISTS` above is a
@@ -56,6 +64,8 @@ export default class AnalyticsTableManagement {
        * column in the sort key still has to drop+recreate the table.
        */
       await this.reconcileColumns(service);
+
+      await this.reconcileDistributedTableColumns(service);
 
       /*
        * Self-heal the two other additive schema layers the inline
@@ -378,7 +388,7 @@ export default class AnalyticsTableManagement {
       existingColumns = await this.getExistingColumns(service);
     } catch (error) {
       logger.error({
-        message: `Failed to read existing columns for ${service.model.tableName} - skipping column reconciliation.`,
+        message: `Failed to read existing columns for ${service.model.getSchemaTableName()} - skipping column reconciliation.`,
         error: (error as Error).message,
       });
       return;
@@ -400,12 +410,12 @@ export default class AnalyticsTableManagement {
 
       try {
         logger.info(
-          `Column ${column.key} is missing on ${service.model.tableName} - adding it.`,
+          `Column ${column.key} is missing on ${service.model.getSchemaTableName()} - adding it.`,
         );
         await service.addColumnInDatabase(column);
       } catch (error) {
         logger.error({
-          message: `Failed to add missing column ${column.key} on ${service.model.tableName}`,
+          message: `Failed to add missing column ${column.key} on ${service.model.getSchemaTableName()}`,
           error: (error as Error).message,
         });
       }
@@ -456,6 +466,51 @@ export default class AnalyticsTableManagement {
     }
 
     return columns;
+  }
+
+  private static async reconcileDistributedTableColumns(
+    service: AnalyticsDatabaseService<AnalyticsBaseModel>,
+  ): Promise<void> {
+    if (!service.model.distributedTableName) {
+      return;
+    }
+
+    let existingColumns: Set<string>;
+
+    try {
+      existingColumns = await this.getExistingColumnNames(
+        service,
+        service.model.distributedTableName,
+      );
+    } catch (error) {
+      logger.error({
+        message: `Failed to read existing columns for ${service.model.distributedTableName} - skipping distributed-table reconciliation.`,
+        error: (error as Error).message,
+      });
+      return;
+    }
+
+    if (existingColumns.size === 0) {
+      return;
+    }
+
+    for (const column of service.model.tableColumns) {
+      if (existingColumns.has(column.key)) {
+        continue;
+      }
+
+      try {
+        logger.info(
+          `Column ${column.key} is missing on ${service.model.distributedTableName} - adding it.`,
+        );
+        await service.addColumnToDistributedTable(column);
+      } catch (error) {
+        logger.error({
+          message: `Failed to add missing column ${column.key} on ${service.model.distributedTableName}`,
+          error: (error as Error).message,
+        });
+      }
+    }
   }
 
   /**
@@ -547,6 +602,29 @@ export default class AnalyticsTableManagement {
     for (const row of response.data || []) {
       const record: JSONObject = row as JSONObject;
       names.add(String(record["name"]));
+    }
+
+    return names;
+  }
+
+  private static async getExistingColumnNames(
+    service: AnalyticsDatabaseService<AnalyticsBaseModel>,
+    tableName: string,
+  ): Promise<Set<string>> {
+    const escapedTableName: string = this.escapeForQuery(tableName);
+
+    const result: Results = await service.executeQuery(
+      `SELECT name FROM system.columns WHERE database = currentDatabase() AND table = '${escapedTableName}'`,
+    );
+
+    const response: DbJSONResponse = await result.json<{
+      data?: Array<JSONObject>;
+    }>();
+
+    const names: Set<string> = new Set<string>();
+
+    for (const row of response.data || []) {
+      names.add(String((row as JSONObject)["name"]));
     }
 
     return names;
@@ -916,6 +994,106 @@ export default class AnalyticsTableManagement {
   }
 
   /**
+   * Reconcile model-owned MergeTree metadata that `CREATE TABLE IF NOT EXISTS`
+   * can never repair on an existing table: today that is the cold-tier
+   * storage policy + TTL clause on telemetry tables. Runs on every boot under
+   * the shared data-migration advisory lock, so upgrades self-heal when the
+   * ClickHouse S3 capability appears after the original table creation.
+   *
+   * Intentionally keyed off `model.storagePolicy`: when cold tier is disabled
+   * the models leave that unset, so the reconcile path is a clean no-op and
+   * preserves the historical delete-only behavior.
+   */
+  public static async reconcileModelOwnedTableSettings(): Promise<void> {
+    for (const service of AnalyticsServices) {
+      if (!service.model.storagePolicy) {
+        continue;
+      }
+
+      try {
+        const targetTableName: string = this.getModelOwnedTableSettingsTargetName(
+          service,
+        );
+        const createQuery: string | null = await this.getTableCreateQuery(
+          service,
+          targetTableName,
+        );
+        if (!createQuery) {
+          logger.warn(
+            `Cannot reconcile table settings for ${service.model.getSchemaTableName()} because the table does not exist yet.`,
+          );
+          continue;
+        }
+
+        const normalizedCreateQuery: string =
+          this.normalizeSqlForComparison(createQuery);
+        const storagePolicyClause: string = `storage_policy = '${service.model.storagePolicy}'`;
+        const ttlClause: string = `TTL ${service.model.ttlExpression}`;
+
+        if (
+          !normalizedCreateQuery.includes(
+            this.normalizeSqlForComparison(storagePolicyClause),
+          )
+        ) {
+          logger.info(
+            `Table ${service.model.getSchemaTableName()} is missing storage policy ${service.model.storagePolicy} - applying it.`,
+          );
+          await service.execute(
+            `ALTER TABLE ${targetTableName}${this.getOnClusterClause(service)} MODIFY SETTING ${storagePolicyClause}`,
+          );
+        }
+
+        if (
+          !normalizedCreateQuery.includes(
+            this.normalizeSqlForComparison(ttlClause),
+          )
+        ) {
+          logger.info(
+            `Table ${service.model.getSchemaTableName()} is missing cold-tier TTL - applying it.`,
+          );
+          await service.execute(
+            `ALTER TABLE ${targetTableName}${this.getOnClusterClause(service)} MODIFY TTL ${service.model.ttlExpression}`,
+          );
+        }
+      } catch (error) {
+        logger.error({
+          message: `Failed to reconcile model-owned table settings on ${service.model.getSchemaTableName()}`,
+          error: (error as Error).message,
+        });
+      }
+    }
+  }
+
+  public static async getTableCreateQuery(
+    service: AnalyticsDatabaseService<AnalyticsBaseModel>,
+    tableName: string = service.model.getSchemaTableName(),
+  ): Promise<string | null> {
+    const databaseName: string | undefined =
+      service.database.getDatasourceOptions().database;
+
+    if (!databaseName) {
+      return null;
+    }
+
+    const escapedDatabaseName: string = this.escapeForQuery(databaseName);
+    const escapedTableName: string = this.escapeForQuery(tableName);
+    const statement: string = `SELECT create_table_query FROM system.tables WHERE database = '${escapedDatabaseName}' AND name = '${escapedTableName}' AND engine != 'MaterializedView' LIMIT 1`;
+    const result: Results = await service.executeQuery(statement);
+    const response: DbJSONResponse = await result.json<{
+      data?: Array<JSONObject>;
+    }>();
+
+    if (!response.data || response.data.length === 0) {
+      return null;
+    }
+
+    const row: JSONObject = response.data[0] as JSONObject;
+    const createQuery: unknown = row["create_table_query"];
+
+    return typeof createQuery === "string" ? createQuery : null;
+  }
+
+  /**
    * Returns the stored CREATE statement of a materialized view (from
    * system.tables.create_table_query), or null if the view does not
    * exist. Callers use this to distinguish a correctly-defined view from
@@ -1220,7 +1398,7 @@ export default class AnalyticsTableManagement {
     );
     const escapedProjection: string = this.escapeIdentifier(projectionName);
 
-    const statement: string = `ALTER TABLE ${escapedDatabase}.${escapedTable} MATERIALIZE PROJECTION ${escapedProjection}`;
+    const statement: string = `ALTER TABLE ${escapedDatabase}.${escapedTable}${this.getOnClusterClause(service)} MATERIALIZE PROJECTION ${escapedProjection}`;
 
     logger.debug(
       `Materializing projection ${projectionName} on ${service.model.tableName}`,
@@ -1248,6 +1426,27 @@ export default class AnalyticsTableManagement {
 
   public static escapeIdentifier(value: string): string {
     return `\`${value.replace(/`/g, "``")}\``;
+  }
+
+  private static normalizeSqlForComparison(value: string): string {
+    return value.replace(/\s+/g, " ").trim();
+  }
+
+  private static getOnClusterClause(
+    service: AnalyticsDatabaseService<AnalyticsBaseModel>,
+  ): string {
+    return service.model.isDistributedTableEnabled() &&
+      service.model.distributedClusterName
+      ? ` ON CLUSTER ${service.model.distributedClusterName}`
+      : "";
+  }
+
+  private static getModelOwnedTableSettingsTargetName(
+    service: AnalyticsDatabaseService<AnalyticsBaseModel>,
+  ): string {
+    return service.model.isDistributedTableEnabled()
+      ? getStorageTableName(service.model.tableName)
+      : service.model.getSchemaTableName();
   }
 
   public static async doesMaterializedViewExist(
