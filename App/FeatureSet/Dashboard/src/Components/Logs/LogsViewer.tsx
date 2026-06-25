@@ -707,7 +707,7 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
           const freshRange: InBetween<Date> =
             RangeStartAndEndDateTimeUtil.getStartAndEndDate(timeRange);
           query = {
-            ...filterOptions,
+            ...query,
             time: new InBetween<Date>(
               freshRange.startValue,
               freshRange.endValue,

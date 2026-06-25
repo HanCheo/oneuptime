@@ -1,6 +1,9 @@
 import ObjectID from "Common/Types/ObjectID";
 import Includes from "Common/Types/BaseDatabase/Includes";
 import TimeRange from "Common/Types/Time/TimeRange";
+import Log from "Common/Models/AnalyticsModels/Log";
+import filterLogsByActiveFilters from "Common/UI/Components/LogsViewer/filterLogsByActiveFilters";
+import { ActiveFilter } from "Common/UI/Components/LogsViewer/types";
 
 // @ts-expect-error Nested package path is used for this node-only regression test.
 import * as React from "../../FeatureSet/Dashboard/node_modules/react";
@@ -267,5 +270,28 @@ describe("DashboardLogsViewer", () => {
 
     expect(result["severityText"]).toBeInstanceOf(Includes);
     expect((result["severityText"] as Includes).values).toEqual(["Debug"]);
+  });
+
+  test("filters rendered rows by active severity facet", () => {
+    const debugLog: Log = {
+      severityText: "Debug",
+      body: "debug row",
+    } as Log;
+    const infoLog: Log = {
+      severityText: "Information",
+      body: "info row",
+    } as Log;
+    const filters: Array<ActiveFilter> = [
+      {
+        facetKey: "severityText",
+        value: "Debug",
+        displayKey: "Severity",
+        displayValue: "Debug",
+      },
+    ];
+
+    expect(filterLogsByActiveFilters([debugLog, infoLog], filters)).toEqual([
+      debugLog,
+    ]);
   });
 });

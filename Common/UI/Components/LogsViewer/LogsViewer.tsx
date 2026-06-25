@@ -55,6 +55,7 @@ import {
   LogsViewMode,
   normalizeLogsTableColumns,
 } from "./types";
+import filterLogsByActiveFilters from "./filterLogsByActiveFilters";
 import LogsAnalyticsView from "./components/LogsAnalyticsView";
 import { LogSearchBarRef } from "./components/LogSearchBar";
 import { queryStringToFilter } from "../../../Types/Log/LogQueryToFilter";
@@ -304,12 +305,16 @@ const LogsViewer: FunctionComponent<ComponentProps> = (
 
   const shouldClientSort: boolean = !props.onSortChange;
 
+  const activeFilterMatchedLogs: Array<Log> = useMemo(() => {
+    return filterLogsByActiveFilters(props.logs, props.activeFilters);
+  }, [props.logs, props.activeFilters]);
+
   const sortedLogs: Array<Log> = useMemo(() => {
     if (!shouldClientSort) {
-      return props.logs;
+      return activeFilterMatchedLogs;
     }
 
-    const cloned: Array<Log> = [...props.logs];
+    const cloned: Array<Log> = [...activeFilterMatchedLogs];
 
     cloned.sort((a: Log, b: Log) => {
       if (sortField === "time") {
@@ -342,7 +347,7 @@ const LogsViewer: FunctionComponent<ComponentProps> = (
     });
 
     return cloned;
-  }, [props.logs, shouldClientSort, sortField, sortOrder]);
+  }, [activeFilterMatchedLogs, shouldClientSort, sortField, sortOrder]);
 
   const shouldClientPaginate: boolean = props.totalCount === undefined;
 
