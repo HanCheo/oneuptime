@@ -306,6 +306,22 @@ function buildBaseQuery(props: ComponentProps): Query<Log> {
   return query;
 }
 
+export function buildLogFilterOptions(
+  props: ComponentProps,
+  timeRange: RangeStartAndEndDateTime,
+  appliedFacetFilters: Map<string, Set<string>>,
+): Query<Log> {
+  const base: Query<Log> = buildBaseQuery(props);
+  const dateRange: InBetween<Date> =
+    RangeStartAndEndDateTimeUtil.getStartAndEndDate(timeRange);
+  (base as any).time = new InBetween<Date>(
+    dateRange.startValue,
+    dateRange.endValue,
+  );
+
+  return applyFacetFiltersToLogQuery(base, appliedFacetFilters);
+}
+
 function getApiUrl(path: string): URL {
   return URL.fromString(APP_API_URL.toString()).addRoute(path);
 }
@@ -355,16 +371,14 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
   const [error, setError] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [filterOptions, setFilterOptions] = useState<Query<Log>>(() => {
-    const base: Query<Log> = buildBaseQuery(props);
     const initialRange: RangeStartAndEndDateTime =
       initialUrlState?.timeRange || { range: TimeRange.PAST_ONE_HOUR };
-    const defaultRange: InBetween<Date> =
-      RangeStartAndEndDateTimeUtil.getStartAndEndDate(initialRange);
-    (base as any).time = new InBetween<Date>(
-      defaultRange.startValue,
-      defaultRange.endValue,
+
+    return buildLogFilterOptions(
+      props,
+      initialRange,
+      initialUrlState?.facetFilters || new Map(),
     );
-    return base;
   });
   const [page, setPage] = useState<number>(initialUrlState?.page || 1);
   const [pageSize, setPageSize] = useState<number>(
@@ -395,6 +409,7 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
 
   const liveRequestInFlight: React.MutableRefObject<boolean> =
     useRef<boolean>(false);
+  const listRequestSequence: React.MutableRefObject<number> = useRef<number>(0);
   const hasAppliedInitialSavedView: React.MutableRefObject<boolean> =
     useRef<boolean>(false);
 
@@ -461,14 +476,9 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
     return [...props.spanIds];
   }, [props.spanIds]);
   useEffect(() => {
-    const base: Query<Log> = buildBaseQuery(props);
-    const dateRange: InBetween<Date> =
-      RangeStartAndEndDateTimeUtil.getStartAndEndDate(timeRange);
-    (base as any).time = new InBetween<Date>(
-      dateRange.startValue,
-      dateRange.endValue,
+    setFilterOptions(
+      buildLogFilterOptions(props, timeRange, appliedFacetFilters),
     );
-    setFilterOptions(applyFacetFiltersToLogQuery(base, appliedFacetFilters));
     setPage(1);
   }, [
     appliedFacetFilters,
@@ -672,6 +682,9 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
         setIsLoading(true);
       }
 
+      const requestSequence: number = listRequestSequence.current + 1;
+      listRequestSequence.current = requestSequence;
+
       try {
         /*
          * When live polling, recompute the time range so the query window
@@ -708,6 +721,10 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
             requestOptions: {},
           });
 
+        if (requestSequence !== listRequestSequence.current) {
+          return;
+        }
+
         setLogs(listResult.data);
         setTotalCount(listResult.count);
         setHasLoadedInitialItems(true);
@@ -725,13 +742,20 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
           setPage(maximumPage);
         }
       } catch (err) {
-        setError(API.getFriendlyMessage(err));
+        if (requestSequence === listRequestSequence.current) {
+          setError(API.getFriendlyMessage(err));
+        }
       } finally {
-        if (skipLoadingState) {
+        if (requestSequence === listRequestSequence.current) {
+          if (skipLoadingState) {
+            liveRequestInFlight.current = false;
+            setIsLiveUpdating(false);
+          } else {
+            setIsLoading(false);
+          }
+        } else if (skipLoadingState) {
           liveRequestInFlight.current = false;
           setIsLiveUpdating(false);
-        } else {
-          setIsLoading(false);
         }
       }
     },
@@ -1193,16 +1217,7 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
     facets: Map<string, Set<string>>,
   ) => Query<Log> = useCallback(
     (facets: Map<string, Set<string>>): Query<Log> => {
-      const updatedFilter: Query<Log> = buildBaseQuery(props);
-
-      const dateRange: InBetween<Date> =
-        RangeStartAndEndDateTimeUtil.getStartAndEndDate(timeRange);
-      (updatedFilter as any).time = new InBetween<Date>(
-        dateRange.startValue,
-        dateRange.endValue,
-      );
-
-      return applyFacetFiltersToLogQuery(updatedFilter, facets);
+      return buildLogFilterOptions(props, timeRange, facets);
     },
     [props, timeRange],
   );
@@ -1277,14 +1292,7 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
 
   const handleClearAllFilters: () => void = useCallback((): void => {
     setAppliedFacetFilters(new Map());
-    const base: Query<Log> = buildBaseQuery(props);
-    const dateRange: InBetween<Date> =
-      RangeStartAndEndDateTimeUtil.getStartAndEndDate(timeRange);
-    (base as any).time = new InBetween<Date>(
-      dateRange.startValue,
-      dateRange.endValue,
-    );
-    setFilterOptions(base);
+    setFilterOptions(buildLogFilterOptions(props, timeRange, new Map()));
     setPage(1);
     disableLiveMode();
   }, [props, timeRange, disableLiveMode]);

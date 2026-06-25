@@ -1,4 +1,6 @@
 import ObjectID from "Common/Types/ObjectID";
+import Includes from "Common/Types/BaseDatabase/Includes";
+import TimeRange from "Common/Types/Time/TimeRange";
 
 // @ts-expect-error Nested package path is used for this node-only regression test.
 import * as React from "../../FeatureSet/Dashboard/node_modules/react";
@@ -221,5 +223,31 @@ describe("DashboardLogsViewer", () => {
         }),
       );
     }).not.toThrow();
+  });
+
+  test("builds initial log query with persisted facet filters", () => {
+    /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires */
+    // prettier-ignore
+    const { buildLogFilterOptions } = require("../../FeatureSet/Dashboard/src/Components/Logs/LogsViewer");
+    /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires */
+
+    const result: Record<string, unknown> = buildLogFilterOptions(
+      {
+        id: "logs-viewer-test",
+        logQuery: {
+          body: "worker",
+        },
+      },
+      { range: TimeRange.PAST_ONE_HOUR },
+      new Map([["severityText", new Set(["Debug", "Trace"])]]),
+    );
+
+    expect(result["body"]).toBe("worker");
+    expect(result["severityText"]).toBeInstanceOf(Includes);
+    expect((result["severityText"] as Includes).values).toEqual([
+      "Debug",
+      "Trace",
+    ]);
+    expect(result["time"]).toBeDefined();
   });
 });
