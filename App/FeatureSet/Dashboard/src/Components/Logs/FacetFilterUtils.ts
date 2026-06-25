@@ -124,6 +124,13 @@ export function applyFacetFiltersToLogQuery(
       continue;
     }
 
+    if (key === "severityText") {
+      (updatedFilter as JSONObject)[key] = new Includes(
+        Array.from(values),
+      ) as never;
+      continue;
+    }
+
     (updatedFilter as JSONObject)[key] =
       values.size === 1
         ? Array.from(values)[0]!

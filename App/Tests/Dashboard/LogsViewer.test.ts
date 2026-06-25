@@ -250,4 +250,22 @@ describe("DashboardLogsViewer", () => {
     ]);
     expect(result["time"]).toBeDefined();
   });
+
+  test("uses an IN predicate for a single severity facet", () => {
+    /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires */
+    // prettier-ignore
+    const { buildLogFilterOptions } = require("../../FeatureSet/Dashboard/src/Components/Logs/LogsViewer");
+    /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires */
+
+    const result: Record<string, unknown> = buildLogFilterOptions(
+      {
+        id: "logs-viewer-test",
+      },
+      { range: TimeRange.PAST_ONE_HOUR },
+      new Map([["severityText", new Set(["Debug"])]]),
+    );
+
+    expect(result["severityText"]).toBeInstanceOf(Includes);
+    expect((result["severityText"] as Includes).values).toEqual(["Debug"]);
+  });
 });

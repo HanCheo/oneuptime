@@ -690,7 +690,14 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
          * When live polling, recompute the time range so the query window
          * slides forward to "now" and new logs become visible.
          */
-        let query: Query<Log> = filterOptions;
+        let query: Query<Log> = buildLogFilterOptions(
+          {
+            ...props,
+            logQuery: filterOptions,
+          },
+          timeRange,
+          appliedFacetFilters,
+        );
 
         if (
           skipLoadingState &&
@@ -760,11 +767,17 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
       }
     },
     [
+      appliedFacetFilters,
       filterOptions,
       isLiveEnabled,
       page,
       pageSize,
+      props.entityScope,
+      props.onCountChange,
+      serviceIdStrings,
+      spanIdStrings,
       select,
+      traceIdStrings,
       sortField,
       sortOrder,
       timeRange,
