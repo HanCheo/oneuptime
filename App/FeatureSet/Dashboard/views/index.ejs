@@ -226,7 +226,7 @@
   <noscript>You need to enable JavaScript to run this app.</noscript>
   <div id="root"></div>
 
-  <script type="module" src="/dashboard/dist/Index.js"></script>
+  <script type="module" src="/dashboard/dist/Index.js?v=<%= typeof frontendCacheKey !== 'undefined' ? frontendCacheKey : 'dev' %>"></script>
   <script>
     tailwind.config = {
       theme: {
