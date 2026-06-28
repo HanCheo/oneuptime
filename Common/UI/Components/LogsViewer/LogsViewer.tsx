@@ -397,6 +397,10 @@ const LogsViewer: FunctionComponent<ComponentProps> = (
     }
   }, [displayedLogs, selectedLogId]);
 
+  useEffect(() => {
+    setSelectedLogId(null);
+  }, [props.activeFilters]);
+
   const loadServices: PromiseVoidFunction =
     useCallback(async (): Promise<void> => {
       try {

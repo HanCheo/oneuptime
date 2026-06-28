@@ -4,6 +4,7 @@ import TimeRange from "Common/Types/Time/TimeRange";
 import Log from "Common/Models/AnalyticsModels/Log";
 import filterLogsByActiveFilters from "Common/UI/Components/LogsViewer/filterLogsByActiveFilters";
 import { ActiveFilter } from "Common/UI/Components/LogsViewer/types";
+import { resolveLogIdentifier } from "Common/UI/Components/LogsViewer/components/LogsTable";
 
 // @ts-expect-error Nested package path is used for this node-only regression test.
 import * as React from "../../FeatureSet/Dashboard/node_modules/react";
@@ -293,5 +294,24 @@ describe("DashboardLogsViewer", () => {
     expect(filterLogsByActiveFilters([debugLog, infoLog], filters)).toEqual([
       debugLog,
     ]);
+  });
+
+  test("uses unique keys for logs that share a trace", () => {
+    const firstLog: Log = {
+      traceId: "shared-trace",
+      spanId: "span-a",
+      timeUnixNano: "100",
+      severityText: "Debug",
+    } as unknown as Log;
+    const secondLog: Log = {
+      traceId: "shared-trace",
+      spanId: "span-b",
+      timeUnixNano: "101",
+      severityText: "Information",
+    } as unknown as Log;
+
+    expect(resolveLogIdentifier(firstLog, 0)).not.toEqual(
+      resolveLogIdentifier(secondLog, 1),
+    );
   });
 });

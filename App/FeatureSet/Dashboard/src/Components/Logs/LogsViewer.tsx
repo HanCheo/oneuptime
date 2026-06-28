@@ -100,7 +100,7 @@ export interface ComponentProps {
 }
 
 const DEFAULT_PAGE_SIZE: number = 100;
-const LIVE_POLL_INTERVAL_MS: number = 10000;
+const LIVE_POLL_INTERVAL_MS: number = 3000;
 const SAVED_VIEWS_LIMIT: number = 100;
 const FACET_FILTER_KEYS: Array<string> = [
   "severityText",
@@ -306,12 +306,14 @@ function buildBaseQuery(props: ComponentProps): Query<Log> {
   return query;
 }
 
-export function buildLogFilterOptions(
-  props: ComponentProps,
+function buildLogFilterOptionsFromBaseQuery(
+  baseQuery: Query<Log>,
   timeRange: RangeStartAndEndDateTime,
   appliedFacetFilters: Map<string, Set<string>>,
 ): Query<Log> {
-  const base: Query<Log> = buildBaseQuery(props);
+  const base: Query<Log> = {
+    ...(baseQuery as unknown as JSONObject),
+  } as Query<Log>;
   const dateRange: InBetween<Date> =
     RangeStartAndEndDateTimeUtil.getStartAndEndDate(timeRange);
   (base as any).time = new InBetween<Date>(
@@ -320,6 +322,18 @@ export function buildLogFilterOptions(
   );
 
   return applyFacetFiltersToLogQuery(base, appliedFacetFilters);
+}
+
+export function buildLogFilterOptions(
+  props: ComponentProps,
+  timeRange: RangeStartAndEndDateTime,
+  appliedFacetFilters: Map<string, Set<string>>,
+): Query<Log> {
+  return buildLogFilterOptionsFromBaseQuery(
+    buildBaseQuery(props),
+    timeRange,
+    appliedFacetFilters,
+  );
 }
 
 function getApiUrl(path: string): URL {
@@ -388,7 +402,6 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
   const [sortField, setSortField] = useState<LogsSortField>("time");
   const [sortOrder, setSortOrder] = useState<SortOrder>(SortOrder.Descending);
   const [isLiveEnabled, setIsLiveEnabled] = useState<boolean>(false);
-  const [isLiveUpdating, setIsLiveUpdating] = useState<boolean>(false);
   const [savedViews, setSavedViews] = useState<Array<LogSavedView>>([]);
   const [selectedSavedViewId, setSelectedSavedViewId] = useState<string | null>(
     null,
@@ -475,21 +488,26 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
 
     return [...props.spanIds];
   }, [props.spanIds]);
+
+  const baseLogQuery: Query<Log> = useMemo(() => {
+    return buildBaseQuery(props);
+  }, [
+    props.entityScope,
+    props.logQuery,
+    serviceIdStrings,
+    spanIdStrings,
+    traceIdStrings,
+  ]);
   useEffect(() => {
     setFilterOptions(
-      buildLogFilterOptions(props, timeRange, appliedFacetFilters),
+      buildLogFilterOptionsFromBaseQuery(
+        baseLogQuery,
+        timeRange,
+        appliedFacetFilters,
+      ),
     );
     setPage(1);
-  }, [
-    appliedFacetFilters,
-    serviceIdStrings,
-    traceIdStrings,
-    spanIdStrings,
-    props.logQuery,
-    props.entityScope,
-    timeRange,
-  ]);
-
+  }, [appliedFacetFilters, baseLogQuery, timeRange]);
   /*
    * Mirror time range / chip filters / page / pageSize to the URL so refresh
    * and back-from-log-detail restore the view. `replaceState` keeps history
@@ -667,17 +685,14 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
 
   const fetchItems: (options?: FetchOptions) => Promise<void> = useCallback(
     async (options: FetchOptions = {}): Promise<void> => {
-      const { skipLoadingState = false } = options;
+      const skipLoadingState: boolean = options.skipLoadingState || false;
 
-      setError("");
+      if (skipLoadingState && liveRequestInFlight.current) {
+        return;
+      }
 
       if (skipLoadingState) {
-        if (liveRequestInFlight.current) {
-          return;
-        }
-
         liveRequestInFlight.current = true;
-        setIsLiveUpdating(true);
       } else {
         setIsLoading(true);
       }
@@ -686,19 +701,19 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
       listRequestSequence.current = requestSequence;
 
       try {
-        /*
-         * When live polling, recompute the time range so the query window
-         * slides forward to "now" and new logs become visible.
-         */
-        let query: Query<Log> = buildLogFilterOptions(
+        let query: Query<Log> = buildLogFilterOptionsFromBaseQuery(
           {
-            ...props,
-            logQuery: filterOptions,
-          },
+            ...(baseLogQuery as unknown as JSONObject),
+            ...(filterOptions as unknown as JSONObject),
+          } as Query<Log>,
           timeRange,
           appliedFacetFilters,
         );
 
+        /*
+         * When live polling, recompute the time range so the query window
+         * slides forward to "now" and new logs become visible.
+         */
         if (
           skipLoadingState &&
           isLiveEnabled &&
@@ -756,33 +771,36 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
         if (requestSequence === listRequestSequence.current) {
           if (skipLoadingState) {
             liveRequestInFlight.current = false;
-            setIsLiveUpdating(false);
           } else {
             setIsLoading(false);
           }
         } else if (skipLoadingState) {
           liveRequestInFlight.current = false;
-          setIsLiveUpdating(false);
         }
       }
     },
     [
       appliedFacetFilters,
+      baseLogQuery,
       filterOptions,
       isLiveEnabled,
       page,
       pageSize,
-      props.entityScope,
       props.onCountChange,
-      serviceIdStrings,
-      spanIdStrings,
       select,
-      traceIdStrings,
       sortField,
       sortOrder,
       timeRange,
     ],
   );
+
+  const fetchItemsRef: React.MutableRefObject<
+    (options?: FetchOptions) => Promise<void>
+  > = useRef(fetchItems);
+
+  useEffect(() => {
+    fetchItemsRef.current = fetchItems;
+  }, [fetchItems]);
 
   // --- Fetch histogram ---
 
@@ -953,7 +971,6 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
     if (isLiveEnabled) {
       setIsLiveEnabled(false);
       liveRequestInFlight.current = false;
-      setIsLiveUpdating(false);
     }
   }, [isLiveEnabled]);
 
@@ -1064,16 +1081,16 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
       return;
     }
 
-    void fetchItems({ skipLoadingState: true });
+    void fetchItemsRef.current({ skipLoadingState: true });
 
     const intervalId: number = window.setInterval(() => {
-      void fetchItems({ skipLoadingState: true });
+      void fetchItemsRef.current({ skipLoadingState: true });
     }, LIVE_POLL_INTERVAL_MS);
 
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [fetchItems, isLiveEnabled, page, sortField, sortOrder]);
+  }, [isLiveEnabled, page, sortField, sortOrder]);
 
   // Realtime
   useEffect(() => {
@@ -1131,7 +1148,6 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
         }
       } else {
         liveRequestInFlight.current = false;
-        setIsLiveUpdating(false);
       }
 
       setIsLiveEnabled(shouldEnable);
@@ -1143,9 +1159,8 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
     (newFilter: Query<Log>): void => {
       setFilterOptions(newFilter);
       setPage(1);
-      disableLiveMode();
     },
-    [disableLiveMode],
+    [],
   );
 
   const handlePageChange: (nextPage: number) => void = useCallback(
@@ -1230,9 +1245,13 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
     facets: Map<string, Set<string>>,
   ) => Query<Log> = useCallback(
     (facets: Map<string, Set<string>>): Query<Log> => {
-      return buildLogFilterOptions(props, timeRange, facets);
+      return buildLogFilterOptionsFromBaseQuery(
+        baseLogQuery,
+        timeRange,
+        facets,
+      );
     },
-    [props, timeRange],
+    [baseLogQuery, timeRange],
   );
 
   const handleFacetInclude: (facetKey: string, value: string) => void =
@@ -1250,14 +1269,12 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
           nextFilters.get(facetKey);
 
         if (currentValues && currentValues.has(value)) {
-          // Toggle off: remove this value
           currentValues.delete(value);
 
           if (currentValues.size === 0) {
             nextFilters.delete(facetKey);
           }
         } else if (currentValues) {
-          // Add value to the existing set
           currentValues.add(value);
         } else {
           nextFilters.set(facetKey, new Set([value]));
@@ -1266,9 +1283,8 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
         setAppliedFacetFilters(nextFilters);
         setFilterOptions(rebuildFilterOptionsFromFacets(nextFilters));
         setPage(1);
-        disableLiveMode();
       },
-      [appliedFacetFilters, disableLiveMode, rebuildFilterOptionsFromFacets],
+      [appliedFacetFilters, rebuildFilterOptionsFromFacets],
     );
 
   const handleRemoveFilter: (facetKey: string, value: string) => void =
@@ -1298,17 +1314,17 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
         setAppliedFacetFilters(nextFilters);
         setFilterOptions(rebuildFilterOptionsFromFacets(nextFilters));
         setPage(1);
-        disableLiveMode();
       },
-      [appliedFacetFilters, disableLiveMode, rebuildFilterOptionsFromFacets],
+      [appliedFacetFilters, rebuildFilterOptionsFromFacets],
     );
 
   const handleClearAllFilters: () => void = useCallback((): void => {
     setAppliedFacetFilters(new Map());
-    setFilterOptions(buildLogFilterOptions(props, timeRange, new Map()));
+    setFilterOptions(
+      buildLogFilterOptionsFromBaseQuery(baseLogQuery, timeRange, new Map()),
+    );
     setPage(1);
-    disableLiveMode();
-  }, [props, timeRange, disableLiveMode]);
+  }, [baseLogQuery, timeRange]);
 
   const getTraceRoute: (traceId: string) => Route | URL | undefined =
     useCallback((traceId: string): Route | URL | undefined => {
@@ -1658,7 +1674,7 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
           liveOptions={{
             isLive: isLiveEnabled,
             onToggle: handleLiveToggle,
-            isDisabled: isLiveUpdating,
+            isDisabled: false,
           }}
           getTraceRoute={getTraceRoute}
           getSpanRoute={getSpanRoute}
