@@ -363,6 +363,10 @@ const MetricsViewer: FunctionComponent<Props> = (
     useState<boolean>(false);
   const lastValueSuggestionKeyRef: React.MutableRefObject<string> =
     useRef<string>("");
+  const metricListRequestSequence: React.MutableRefObject<number> =
+    useRef<number>(0);
+  const metricFacetRequestSequence: React.MutableRefObject<number> =
+    useRef<number>(0);
 
   // Metric names that match attribute filters (null = no attribute filter active)
   const [attributeMatchedNames, setAttributeMatchedNames] =
@@ -823,8 +827,12 @@ const MetricsViewer: FunctionComponent<Props> = (
 
   // Fetch metric list
   const fetchMetrics: () => Promise<void> = useCallback(async () => {
+    const requestSequence: number = metricListRequestSequence.current + 1;
+    metricListRequestSequence.current = requestSequence;
+
     setIsLoading(true);
     setError("");
+
     try {
       const result: ModelListResult<MetricType> = await ModelAPI.getList({
         modelType: MetricType,
@@ -843,12 +851,21 @@ const MetricsViewer: FunctionComponent<Props> = (
         },
         sort: { name: SortOrder.Ascending },
       });
+
+      if (requestSequence !== metricListRequestSequence.current) {
+        return;
+      }
+
       setMetrics(result.data || []);
       setTotalCount(result.count);
     } catch (err) {
-      setError(API.getFriendlyMessage(err));
+      if (requestSequence === metricListRequestSequence.current) {
+        setError(API.getFriendlyMessage(err));
+      }
     } finally {
-      setIsLoading(false);
+      if (requestSequence === metricListRequestSequence.current) {
+        setIsLoading(false);
+      }
     }
   }, [metricQuery, page, pageSize]);
 
@@ -1025,6 +1042,9 @@ const MetricsViewer: FunctionComponent<Props> = (
       return;
     }
 
+    const requestSequence: number = metricFacetRequestSequence.current + 1;
+    metricFacetRequestSequence.current = requestSequence;
+
     setFacetLoading(true);
 
     const dateRange: InBetween<Date> =
@@ -1053,12 +1073,17 @@ const MetricsViewer: FunctionComponent<Props> = (
       );
       const facets: FacetData = (response.data["facets"] ||
         {}) as unknown as FacetData;
-      setFacetData(facets);
+      if (requestSequence === metricFacetRequestSequence.current) {
+        setFacetData(facets);
+      }
     } catch {
-      // Facets are non-critical; silently degrade
-      setFacetData({});
+      if (requestSequence === metricFacetRequestSequence.current) {
+        setFacetData({});
+      }
     } finally {
-      setFacetLoading(false);
+      if (requestSequence === metricFacetRequestSequence.current) {
+        setFacetLoading(false);
+      }
     }
   }, [isScoped, timeRange, facetSearchText]);
 
