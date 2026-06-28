@@ -218,7 +218,6 @@ export class MetricService extends AnalyticsDatabaseService<Metric> {
     if (attributeGroupStatement) {
       return attributeGroupStatement;
     }
-    }
 
     if (!isPercentileAggregation(aggregateBy.aggregationType)) {
       /*
