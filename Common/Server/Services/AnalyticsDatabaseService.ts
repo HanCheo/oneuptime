@@ -526,7 +526,20 @@ export default class AnalyticsDatabaseService<
   public async addColumnInDatabase(
     column: AnalyticsTableColumn,
   ): Promise<void> {
-    await this.addColumnToTable(this.model.getSchemaTableName(), column);
+    /*
+     * In cluster mode the model's `tableName` is the app-facing Distributed
+     * wrapper; the physical data lives in `<tableName>Local`. ADD COLUMN must
+     * land on the physical storage table first or background inserts routed via
+     * the wrapper fail later with "No such column ..." once the Distributed
+     * queue reaches a shard. After the local/storage table is updated, mirror
+     * the column onto every Distributed wrapper the model exposes so reads and
+     * inserts share the same shape.
+     */
+    const physicalTableName: string = this.model.isDistributedTableEnabled()
+      ? getStorageTableName(this.model.getSchemaTableName())
+      : this.model.getSchemaTableName();
+
+    await this.addColumnToTable(physicalTableName, column);
 
     // Add skip index separately (ClickHouse requires ADD INDEX as a separate ALTER statement)
     const indexStatement: Statement | null =
@@ -535,6 +548,7 @@ export default class AnalyticsDatabaseService<
       await this.execute(indexStatement, MigrationExecuteOptions);
     }
     if (this.model.distributedTableName) {
+      await this.addColumnToTable(this.model.getSchemaTableName(), column);
       await this.addColumnToDistributedTable(column);
     }
   }

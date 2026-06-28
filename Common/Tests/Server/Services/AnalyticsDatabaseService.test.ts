@@ -591,4 +591,73 @@ describe("AnalyticsDatabaseService", () => {
       });
     });
   });
+  describe("addColumnInDatabase", () => {
+    class DistributedTestModel extends AnalyticsBaseModel {
+      public constructor() {
+        super({
+          tableName: "SpanItemV3",
+          distributedTableName: "SpanItemV3Distributed",
+          distributedClusterName: "ou",
+          distributedShardingKey: "cityHash64(traceId)",
+          singularName: "Span",
+          pluralName: "Spans",
+          tableColumns: [
+            new AnalyticsTableColumn({
+              key: "projectId",
+              title: "Project",
+              description: "test",
+              required: true,
+              type: TableColumnType.ObjectID,
+            }),
+            new AnalyticsTableColumn({
+              key: "traceId",
+              title: "Trace",
+              description: "test",
+              required: true,
+              type: TableColumnType.Text,
+            }),
+            new AnalyticsTableColumn({
+              key: "llmResponseModel",
+              title: "LLM Response Model",
+              description: "test",
+              required: false,
+              type: TableColumnType.Text,
+            }),
+          ],
+          crudApiPath: new Route("span"),
+          primaryKeys: ["traceId"],
+          sortKeys: ["traceId"],
+          partitionKey: "projectId",
+          tableEngine: AnalyticsTableEngine.MergeTree,
+        });
+      }
+    }
+
+    test("cluster mode adds a missing column to local and distributed wrappers", async () => {
+      const distributedService: AnalyticsDatabaseService<DistributedTestModel> =
+        new AnalyticsDatabaseService({
+          modelType: DistributedTestModel,
+        });
+      const executeSpy: jest.SpiedFunction<
+        AnalyticsDatabaseService<DistributedTestModel>["execute"]
+      > = jest
+        .spyOn(distributedService, "execute")
+        .mockResolvedValue(undefined as never);
+
+      await distributedService.addColumnInDatabase(
+        new DistributedTestModel().tableColumns[2]!,
+      );
+
+      expect(executeSpy).toHaveBeenCalledTimes(3);
+      expect((executeSpy.mock.calls[0]![0] as Statement).query).toBe(
+        "ALTER TABLE oneuptime.SpanItemV3Local ON CLUSTER ou ADD COLUMN IF NOT EXISTS llmResponseModel Nullable(String)",
+      );
+      expect((executeSpy.mock.calls[1]![0] as Statement).query).toBe(
+        "ALTER TABLE oneuptime.SpanItemV3 ON CLUSTER ou ADD COLUMN IF NOT EXISTS llmResponseModel Nullable(String)",
+      );
+      expect((executeSpy.mock.calls[2]![0] as Statement).query).toBe(
+        "ALTER TABLE oneuptime.SpanItemV3Distributed ON CLUSTER ou ADD COLUMN IF NOT EXISTS llmResponseModel Nullable(String)",
+      );
+    });
+  });
 });
