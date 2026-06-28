@@ -26,30 +26,54 @@ import {
 } from "./Utils/StatusPage";
 import DashboardDomainService from "Common/Server/Services/DashboardDomainService";
 import DashboardDomain from "Common/Models/DatabaseModels/DashboardDomain";
+import path from "path";
 
 const app: ExpressApplication = Express.getExpressApp();
 
-const AccountsPublicPath: string = "/usr/src/app/FeatureSet/Accounts/public";
-const AccountsViewPath: string =
-  "/usr/src/app/FeatureSet/Accounts/views/index.ejs";
+const AccountsPublicPath: string = path.resolve(
+  process.cwd(),
+  "FeatureSet/Accounts/public",
+);
+const AccountsViewPath: string = path.resolve(
+  process.cwd(),
+  "FeatureSet/Accounts/views/index.ejs",
+);
 
-const DashboardPublicPath: string = "/usr/src/app/FeatureSet/Dashboard/public";
-const DashboardViewPath: string =
-  "/usr/src/app/FeatureSet/Dashboard/views/index.ejs";
+const DashboardPublicPath: string = path.resolve(
+  process.cwd(),
+  "FeatureSet/Dashboard/public",
+);
+const DashboardViewPath: string = path.resolve(
+  process.cwd(),
+  "FeatureSet/Dashboard/views/index.ejs",
+);
 
-const AdminPublicPath: string = "/usr/src/app/FeatureSet/AdminDashboard/public";
-const AdminViewPath: string =
-  "/usr/src/app/FeatureSet/AdminDashboard/views/index.ejs";
+const AdminPublicPath: string = path.resolve(
+  process.cwd(),
+  "FeatureSet/AdminDashboard/public",
+);
+const AdminViewPath: string = path.resolve(
+  process.cwd(),
+  "FeatureSet/AdminDashboard/views/index.ejs",
+);
 
-const StatusPagePublicPath: string =
-  "/usr/src/app/FeatureSet/StatusPage/public";
-const StatusPageViewPath: string =
-  "/usr/src/app/FeatureSet/StatusPage/views/index.ejs";
+const StatusPagePublicPath: string = path.resolve(
+  process.cwd(),
+  "FeatureSet/StatusPage/public",
+);
+const StatusPageViewPath: string = path.resolve(
+  process.cwd(),
+  "FeatureSet/StatusPage/views/index.ejs",
+);
 
-const PublicDashboardPublicPath: string =
-  "/usr/src/app/FeatureSet/PublicDashboard/public";
-const PublicDashboardViewPath: string =
-  "/usr/src/app/FeatureSet/PublicDashboard/views/index.ejs";
+const PublicDashboardPublicPath: string = path.resolve(
+  process.cwd(),
+  "FeatureSet/PublicDashboard/public",
+);
+const PublicDashboardViewPath: string = path.resolve(
+  process.cwd(),
+  "FeatureSet/PublicDashboard/views/index.ejs",
+);
 
 interface FrontendConfig {
   routePrefix: string;
@@ -310,6 +334,11 @@ const renderFrontendIndexPage: (
     if (res.headersSent) {
       return;
     }
+
+    variables = {
+      frontendCacheKey: process.env["APP_VERSION"] || "dev",
+      ...variables,
+    };
 
     res.render(frontendConfig.indexViewPath, {
       enableGoogleTagManager: IsBillingEnabled || false,
