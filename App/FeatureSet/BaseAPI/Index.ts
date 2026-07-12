@@ -135,6 +135,7 @@ import AlertCustomFieldService, {
 import AlertInternalNoteAPI from "Common/Server/API/AlertInternalNoteAPI";
 import TelemetryExceptionAPI from "Common/Server/API/TelemetryExceptionAPI";
 import KubernetesResourceAPI from "Common/Server/API/KubernetesResourceAPI";
+import KubernetesClusterAPI from "Common/Server/API/KubernetesClusterAPI";
 import ProxmoxResourceAPI from "Common/Server/API/ProxmoxResourceAPI";
 import IoTDeviceAPI from "Common/Server/API/IoTDeviceAPI";
 import DockerSwarmResourceAPI from "Common/Server/API/DockerSwarmResourceAPI";
@@ -143,6 +144,10 @@ import KubernetesContainer from "Common/Models/DatabaseModels/KubernetesContaine
 import KubernetesContainerService, {
   Service as KubernetesContainerServiceType,
 } from "Common/Server/Services/KubernetesContainerService";
+import KubernetesResourceChangeEvent from "Common/Models/DatabaseModels/KubernetesResourceChangeEvent";
+import KubernetesResourceChangeEventService, {
+  Service as KubernetesResourceChangeEventServiceType,
+} from "Common/Server/Services/KubernetesResourceChangeEventService";
 import AlertNoteTemplateService, {
   Service as AlertNoteTemplateServiceType,
 } from "Common/Server/Services/AlertNoteTemplateService";
@@ -503,9 +508,6 @@ import IncidentTemplateOwnerUserService, {
 import IncidentTemplateService, {
   Service as IncidentTemplateServiceType,
 } from "Common/Server/Services/IncidentTemplateService";
-import KubernetesClusterService, {
-  Service as KubernetesClusterServiceType,
-} from "Common/Server/Services/KubernetesClusterService";
 import KubernetesClusterOwnerTeamService, {
   Service as KubernetesClusterOwnerTeamServiceType,
 } from "Common/Server/Services/KubernetesClusterOwnerTeamService";
@@ -1027,7 +1029,6 @@ import IncidentTemplate from "Common/Models/DatabaseModels/IncidentTemplate";
 import IncidentTemplateOwnerTeam from "Common/Models/DatabaseModels/IncidentTemplateOwnerTeam";
 import IncidentTemplateOwnerUser from "Common/Models/DatabaseModels/IncidentTemplateOwnerUser";
 
-import KubernetesCluster from "Common/Models/DatabaseModels/KubernetesCluster";
 import KubernetesClusterOwnerTeam from "Common/Models/DatabaseModels/KubernetesClusterOwnerTeam";
 import KubernetesClusterOwnerUser from "Common/Models/DatabaseModels/KubernetesClusterOwnerUser";
 import ServerlessFunction from "Common/Models/DatabaseModels/ServerlessFunction";
@@ -2381,8 +2382,6 @@ const BaseAPIFeatureSet: FeatureSet = {
 
     app.use(`/${APP_NAME.toLocaleLowerCase()}`, new IoTDeviceAPI().getRouter());
 
-    app.use(`/${APP_NAME.toLocaleLowerCase()}`, new IoTDeviceAPI().getRouter());
-
     app.use(
       `/${APP_NAME.toLocaleLowerCase()}`,
       new DockerSwarmResourceAPI().getRouter(),
@@ -2398,6 +2397,17 @@ const BaseAPIFeatureSet: FeatureSet = {
       new BaseAPI<KubernetesContainer, KubernetesContainerServiceType>(
         KubernetesContainer,
         KubernetesContainerService,
+      ).getRouter(),
+    );
+
+    app.use(
+      `/${APP_NAME.toLocaleLowerCase()}`,
+      new BaseAPI<
+        KubernetesResourceChangeEvent,
+        KubernetesResourceChangeEventServiceType
+      >(
+        KubernetesResourceChangeEvent,
+        KubernetesResourceChangeEventService,
       ).getRouter(),
     );
 
@@ -3213,10 +3223,7 @@ const BaseAPIFeatureSet: FeatureSet = {
 
     app.use(
       `/${APP_NAME.toLocaleLowerCase()}`,
-      new BaseAPI<KubernetesCluster, KubernetesClusterServiceType>(
-        KubernetesCluster,
-        KubernetesClusterService,
-      ).getRouter(),
+      new KubernetesClusterAPI().getRouter(),
     );
 
     app.use(

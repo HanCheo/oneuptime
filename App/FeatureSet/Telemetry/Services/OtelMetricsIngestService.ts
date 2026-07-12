@@ -20,7 +20,7 @@ import ObjectID from "Common/Types/ObjectID";
 import TelemetryUtil, {
   AttributeType,
 } from "Common/Server/Utils/Telemetry/Telemetry";
-import { JSONArray, JSONObject } from "Common/Types/JSON";
+import { JSONArray, JSONObject, JSONValue } from "Common/Types/JSON";
 import logger, {
   getLogAttributesFromRequest,
   type RequestLike,
@@ -91,12 +91,15 @@ import {
   deriveCephClusterSnapshotExtras,
 } from "Common/Server/Utils/Telemetry/ProxmoxCephSnapshotScan";
 import {
+  IOT_FLEET_ROLLUP_METRIC_PREFIX,
   IOT_SNAPSHOT_METRIC_NAMES,
+  IOT_SYNTHETIC_ATTRIBUTE_KEY,
   IoTDeviceBufferEntry,
   IoTFleetSnapshotBufferEntry,
   IoTFleetSnapshotExtras,
   bufferIoTSnapshotMetric,
   deriveIoTFleetSnapshotExtras,
+  getOrCreateIoTFleetSnapshot,
 } from "Common/Server/Utils/Telemetry/IoTSnapshotScan";
 
 type MetricTimestamp = {
@@ -594,6 +597,20 @@ export default class OtelMetricsIngestService extends OtelIngestBaseService {
       }
 
       /*
+       * IoT-fleet-scope re-check (defense in depth) — must run before
+       * anything is buffered or written for this batch.
+       */
+      if (
+        this.shouldDropBatchForIotFleetScope({
+          req,
+          resourceEnvelopes: resourceMetrics,
+          signalName: "metrics",
+        })
+      ) {
+        return;
+      }
+
+      /*
        * Canonicalize host.name casing before host enrichment and the main
        * loop both read it — so the resolved hostIdentifier and the stored
        * resource.host.name attribute share one casing and the host-detail
@@ -836,6 +853,27 @@ export default class OtelMetricsIngestService extends OtelIngestBaseService {
               attributes: resourceAttributes_raw,
             }),
           ]);
+
+          /*
+           * IoT agent version rides the RESOURCE attributes
+           * (oneuptime.agent.version), not the datapoint labels the
+           * per-metric snapshot fold reads — stamp it on the fleet
+           * snapshot here so the flush can write IoTFleet.agentVersion
+           * (which otherwise renders as an empty spec chip on the
+           * fleet overview).
+           */
+          if (iotFleetId) {
+            const iotAgentVersion: string | null = this.getStringAttribute(
+              resourceAttributes_raw,
+              "oneuptime.agent.version",
+            );
+            if (iotAgentVersion) {
+              getOrCreateIoTFleetSnapshot(
+                iotFleetSnapshotBuffer,
+                iotFleetId.toString(),
+              ).agentVersion = iotAgentVersion;
+            }
+          }
 
           /*
            * Generic Host auto-discovery. Pre-scan the resource's
@@ -1228,6 +1266,44 @@ export default class OtelMetricsIngestService extends OtelIngestBaseService {
                           await EventLoop.yieldToEventLoop();
                         }
                         datapointCounter++;
+
+                        /*
+                         * Reserved rollup namespace: iot_fleet_* series
+                         * and anything stamped oneuptime.synthetic are
+                         * server-computed by the IoT workers. Pushed
+                         * datapoints wearing those markers are dropped so
+                         * a device — even one holding a fleet-scoped
+                         * ingestion key — cannot forge or mask the
+                         * fleet-health series its alerts ride on. Name
+                         * check first (cheap); the attribute scan only
+                         * runs for resource-level or datapoint-level
+                         * synthetic markers.
+                         */
+                        if (
+                          metricName.startsWith(
+                            IOT_FLEET_ROLLUP_METRIC_PREFIX,
+                          ) ||
+                          metricAttributes[IOT_SYNTHETIC_ATTRIBUTE_KEY] !==
+                            undefined ||
+                          metricAttributes[
+                            `resource.${IOT_SYNTHETIC_ATTRIBUTE_KEY}`
+                          ] !== undefined ||
+                          (
+                            ((datapoint as JSONObject)[
+                              "attributes"
+                            ] as JSONArray) || []
+                          ).some((attribute: JSONValue) => {
+                            return (
+                              (attribute as JSONObject)?.["key"] ===
+                              IOT_SYNTHETIC_ATTRIBUTE_KEY
+                            );
+                          })
+                        ) {
+                          logger.debug(
+                            `Dropping pushed datapoint "${metricName}" — the iot_fleet_*/oneuptime.synthetic namespace is reserved for server-computed rollups (project ${projectId.toString()}).`,
+                          );
+                          continue;
+                        }
                         /*
                          * Mirror the latest CPU / memory point of a small
                          * allow-list of metrics into the Postgres snapshot

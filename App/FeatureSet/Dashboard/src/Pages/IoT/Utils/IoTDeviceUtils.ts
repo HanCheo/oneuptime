@@ -3,6 +3,7 @@ import ModelAPI, { ListResult } from "Common/UI/Utils/ModelAPI/ModelAPI";
 import { LIMIT_PER_PROJECT } from "Common/Types/Database/LimitMax";
 import ObjectID from "Common/Types/ObjectID";
 import SortOrder from "Common/Types/BaseDatabase/SortOrder";
+import OneUptimeDate from "Common/Types/Date";
 
 /*
  * Shared helpers for the IoT fleet list/detail pages. The pages read the
@@ -20,6 +21,47 @@ import SortOrder from "Common/Types/BaseDatabase/SortOrder";
 export const METRIC_STALE_MS: number = 15 * 60 * 1000;
 
 export type IoTDeviceKind = "Device" | "Sensor" | "Gateway";
+
+/*
+ * Every kind the ingest path writes (IoTDeviceService's Device |
+ * Sensor | Gateway contract) — drives the kind filter dropdown on the
+ * fleet Devices table.
+ */
+export const IOT_DEVICE_KINDS: Array<IoTDeviceKind> = [
+  "Device",
+  "Sensor",
+  "Gateway",
+];
+
+/*
+ * True when the latest-metric mirror columns (battery / signal /
+ * temperature / cpu / memory) are fresh enough to display as live
+ * numbers. Rows whose metricsUpdatedAt is older than METRIC_STALE_MS
+ * (or missing entirely) must render the mirrors as stale — same
+ * contract as the at-risk list on the fleet overview.
+ */
+export function areLatestMetricsFresh(row: IoTDeviceModel): boolean {
+  if (!row.metricsUpdatedAt) {
+    return false;
+  }
+  return (
+    Date.now() - new Date(row.metricsUpdatedAt as Date).getTime() <=
+    METRIC_STALE_MS
+  );
+}
+
+/*
+ * Tooltip text for stale metric cells — says when the mirrors were
+ * last updated so the muted em-dash doesn't read as "never reported".
+ */
+export function staleMetricsTitle(row: IoTDeviceModel): string {
+  if (!row.metricsUpdatedAt) {
+    return "Stale — metrics have not been reported recently.";
+  }
+  return `Stale — metrics last updated ${OneUptimeDate.fromNow(
+    new Date(row.metricsUpdatedAt as Date),
+  )}.`;
+}
 
 export function formatBytes(bytes: number | null | undefined): string {
   if (bytes === null || bytes === undefined || !Number.isFinite(bytes)) {
@@ -100,10 +142,21 @@ export function displayNameForDevice(row: IoTDeviceModel): string {
 }
 
 /*
- * Display status for a device: Online/Offline. Empty until the first
- * iot_device_up datapoint lands.
+ * Display status for a device. Lifecycle state wins over the raw isUp
+ * flag: isUp is the last device-REPORTED up/down, state is the
+ * lifecycle truth (a silent device is Offline/Stale even though its
+ * last report said up). Legacy rows (state null) fall back to isUp.
  */
 export function displayStatusForDevice(row: IoTDeviceModel): string {
+  const state: string | undefined = row.state as string | undefined;
+  if (
+    state === "Online" ||
+    state === "Offline" ||
+    state === "Stale" ||
+    state === "Retired"
+  ) {
+    return state;
+  }
   if (row.isUp === undefined || row.isUp === null) {
     return "";
   }
@@ -127,6 +180,9 @@ const INVENTORY_SELECT: Record<string, boolean> = {
   latestTemperatureCelsius: true,
   metricsUpdatedAt: true,
   lastSeenAt: true,
+  state: true,
+  stateChangedAt: true,
+  isArchived: true,
 };
 
 /**
@@ -190,6 +246,9 @@ export async function fetchIoTInventoryRow(options: {
 
 export default {
   METRIC_STALE_MS,
+  IOT_DEVICE_KINDS,
+  areLatestMetricsFresh,
+  staleMetricsTitle,
   formatBytes,
   formatPercent,
   formatUptime,

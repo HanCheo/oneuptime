@@ -5,6 +5,7 @@ import KubernetesClusterOwnerTeam from "./KubernetesClusterOwnerTeam";
 import KubernetesClusterOwnerUser from "./KubernetesClusterOwnerUser";
 import KubernetesResource from "./KubernetesResource";
 import KubernetesContainer from "./KubernetesContainer";
+import KubernetesResourceChangeEvent from "./KubernetesResourceChangeEvent";
 import DockerHost from "./DockerHost";
 import NetworkDevice from "./NetworkDevice";
 import NetworkDeviceOwnerTeam from "./NetworkDeviceOwnerTeam";
@@ -769,6 +770,7 @@ const AllModelTypes: Array<{
   KubernetesClusterOwnerUser,
   KubernetesResource,
   KubernetesContainer,
+  KubernetesResourceChangeEvent,
   DockerHost,
   NetworkDevice,
   NetworkDeviceOwnerTeam,

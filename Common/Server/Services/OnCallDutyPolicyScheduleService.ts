@@ -1,4 +1,6 @@
 import DatabaseService from "./DatabaseService";
+import URL from "../../Types/API/URL";
+import DatabaseConfig from "../DatabaseConfig";
 import OnCallDutyPolicyScheduleLayerService from "./OnCallDutyPolicyScheduleLayerService";
 import OnCallDutyPolicyScheduleLayerUserService from "./OnCallDutyPolicyScheduleLayerUserService";
 import OnCallDutyPolicyUserOverrideService from "./OnCallDutyPolicyUserOverrideService";
@@ -1739,6 +1741,18 @@ export class Service extends DatabaseService<OnCallDutyPolicySchedule> {
     }
 
     return new ObjectID(userId);
+  }
+
+  @CaptureSpan()
+  public async getLinkInDashboard(
+    projectId: ObjectID,
+    onCallDutyPolicyScheduleId: ObjectID,
+  ): Promise<URL> {
+    const dashboardUrl: URL = await DatabaseConfig.getDashboardUrl();
+
+    return URL.fromString(dashboardUrl.toString()).addRoute(
+      `/${projectId.toString()}/on-call-duty/schedules/${onCallDutyPolicyScheduleId.toString()}`,
+    );
   }
 }
 

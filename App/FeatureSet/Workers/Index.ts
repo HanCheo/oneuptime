@@ -147,8 +147,9 @@ import "./Jobs/Metrics/ComputeRecordingRules";
 // Derived metrics from spans.
 import "./Jobs/Traces/ComputeTraceRecordingRules";
 
-// Kubernetes inventory cleanup.
+// Kubernetes inventory cleanup + owner-added notifications.
 import "./Jobs/Kubernetes/CleanupStaleResources";
+import "./Jobs/Kubernetes/SendOwnerAddedNotification";
 
 // Docker inventory cleanup + cached count refresh.
 import "./Jobs/Docker/CleanupStaleResources";
@@ -159,17 +160,38 @@ import "./Jobs/Podman/CleanupStaleResources";
 // Host disconnection sweeper.
 import "./Jobs/Host/CleanupStaleHosts";
 
-// Proxmox cluster disconnection sweeper + inventory cleanup.
+// Proxmox cluster disconnection sweeper + inventory cleanup + owner-added notifications.
 import "./Jobs/Proxmox/CleanupStaleResources";
+import "./Jobs/Proxmox/SendOwnerAddedNotification";
 
-// Ceph cluster disconnection sweeper + inventory cleanup.
+// Ceph cluster disconnection sweeper + inventory cleanup + owner-added notifications.
 import "./Jobs/Ceph/CleanupStaleResources";
+import "./Jobs/Ceph/SendOwnerAddedNotification";
 
-// Docker Swarm cluster disconnection sweeper + inventory cleanup.
+// Docker Swarm cluster disconnection sweeper + inventory cleanup + owner-added notifications.
 import "./Jobs/DockerSwarm/CleanupStaleResources";
+import "./Jobs/DockerSwarm/SendOwnerAddedNotification";
 
-// IoT fleet disconnection sweeper + inventory cleanup.
+// IoT fleet disconnection sweeper + inventory cleanup + owner-added notifications.
 import "./Jobs/IoT/CleanupStaleResources";
+import "./Jobs/IoT/CheckDeviceHeartbeats";
+import "./Jobs/IoT/ComputeFleetRollups";
+import "./Jobs/IoT/SendOwnerAddedNotification";
+
+// Owner-added notifications for the remaining ownable resources.
+import "./Jobs/CloudResource/SendOwnerAddedNotification";
+import "./Jobs/Dashboard/SendOwnerAddedNotification";
+import "./Jobs/Docker/SendOwnerAddedNotification";
+import "./Jobs/Host/SendOwnerAddedNotification";
+import "./Jobs/IncomingCallPolicy/SendOwnerAddedNotification";
+import "./Jobs/MonitorGroup/SendOwnerAddedNotification";
+import "./Jobs/OnCallPolicy/SendOwnerAddedNotification";
+import "./Jobs/OnCallDutySchedule/SendOwnerAddedNotification";
+import "./Jobs/Podman/SendOwnerAddedNotification";
+import "./Jobs/Rum/SendOwnerAddedNotification";
+import "./Jobs/Runbook/SendOwnerAddedNotification";
+import "./Jobs/ServerlessFunction/SendOwnerAddedNotification";
+import "./Jobs/Workflow/SendOwnerAddedNotification";
 
 // Telemetry entity registry: TTL prune + span-derived service map edges.
 import "./Jobs/TelemetryEntity/PruneStaleEntities";

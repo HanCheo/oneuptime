@@ -403,6 +403,11 @@ import { WidenDockerResourceImageColumns1782800000000 } from "./1782800000000-Wi
 import { AddIoTFleetAndDeviceTables1782900000000 } from "./1782900000000-AddIoTFleetAndDeviceTables";
 import { AddIoTFleetActivityJoinTables1783000000000 } from "./1783000000000-AddIoTFleetActivityJoinTables";
 import { MigrationName1783010000000 } from "./1783010000000-MigrationName";
+import { AddKubernetesChangeEventsAndCostConfig1783015423175 } from "./1783015423175-AddKubernetesChangeEventsAndCostConfig";
+import { AddKubernetesChangeEventOccurredAtIndex1783015423176 } from "./1783015423176-AddKubernetesChangeEventOccurredAtIndex";
+import { AddIoTDeviceLifecycleColumns1783087273439 } from "./1783087273439-AddIoTDeviceLifecycleColumns";
+import { AddIoTFleetDefaultOnCallPolicy1783087742536 } from "./1783087742536-AddIoTFleetDefaultOnCallPolicy";
+import { AddIngestionKeyIoTFleetScope1783105434505 } from "./1783105434505-AddIngestionKeyIoTFleetScope";
 import { AddInstanceIdToGlobalConfig1783161406136 } from "./1783161406136-AddInstanceIdToGlobalConfig";
 import { AddEnterpriseLicenseInstance1783226868418 } from "./1783226868418-AddEnterpriseLicenseInstance";
 import { AddIncidentAlertReminderRules1783234451106 } from "./1783234451106-AddIncidentAlertReminderRules";
@@ -852,6 +857,11 @@ export default [
   AddIoTFleetAndDeviceTables1782900000000,
   AddIoTFleetActivityJoinTables1783000000000,
   MigrationName1783010000000,
+  AddKubernetesChangeEventsAndCostConfig1783015423175,
+  AddKubernetesChangeEventOccurredAtIndex1783015423176,
+  AddIoTDeviceLifecycleColumns1783087273439,
+  AddIoTFleetDefaultOnCallPolicy1783087742536,
+  AddIngestionKeyIoTFleetScope1783105434505,
   AddInstanceIdToGlobalConfig1783161406136,
   AddEnterpriseLicenseInstance1783226868418,
   AddIncidentAlertReminderRules1783234451106,

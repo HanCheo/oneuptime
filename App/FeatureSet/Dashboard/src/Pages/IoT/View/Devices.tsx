@@ -3,8 +3,12 @@ import ObjectID from "Common/Types/ObjectID";
 import Navigation from "Common/UI/Utils/Navigation";
 import IoTDevice from "Common/Models/DatabaseModels/IoTDevice";
 import {
+  IOT_DEVICE_KINDS,
+  IoTDeviceKind,
+  areLatestMetricsFresh,
   formatPercent,
   routeParamFromExternalId,
+  staleMetricsTitle,
 } from "../Utils/IoTDeviceUtils";
 import React, { Fragment, FunctionComponent, ReactElement } from "react";
 import ModelTable from "Common/UI/Components/ModelTable/ModelTable";
@@ -12,6 +16,9 @@ import FieldType from "Common/UI/Components/Types/FieldType";
 import StatusBadge, {
   StatusBadgeType,
 } from "Common/UI/Components/StatusBadge/StatusBadge";
+import { DropdownOption } from "Common/UI/Components/Dropdown/Dropdown";
+import FormFieldSchemaType from "Common/UI/Components/Forms/Types/FormFieldSchemaType";
+import SortOrder from "Common/Types/BaseDatabase/SortOrder";
 import PageMap from "../../../Utils/PageMap";
 import RouteMap, { RouteUtil } from "../../../Utils/RouteMap";
 import Route from "Common/Types/API/Route";
@@ -19,14 +26,51 @@ import Route from "Common/Types/API/Route";
 /*
  * Devices in a single fleet. Reads the IoTDevice Postgres inventory
  * table scoped to this fleet (an IoT fleet contains only Devices — no
- * nodes/guests/storage like Proxmox). Read-only: rows are upserted by
- * the OTel ingest path, never created by users.
+ * nodes/guests/storage like Proxmox). Rows are upserted by the OTel
+ * ingest path, never created by users; the only user-editable fields
+ * are the expected check-in interval (silence-based offline
+ * detection) and the archive flag. Archived devices are hidden here;
+ * Retired devices stay visible with a neutral badge so history is
+ * findable.
  *
  * The view route's subModelId is the device `externalId` (the
  * `device.id` datapoint label) percent-encoded as a single path
  * segment — same identity scheme as the Proxmox guest/node detail
  * routes — not the DB `_id`.
  */
+
+type RenderLatestMetricCellFunction = (
+  item: IoTDevice,
+  hasValue: boolean,
+  renderValue: () => ReactElement,
+) => ReactElement;
+
+/*
+ * Latest-metric mirror cells (battery/signal/temperature) share one
+ * staleness contract: no value renders a muted em-dash; a value whose
+ * metricsUpdatedAt is older than METRIC_STALE_MS renders as a muted
+ * em-dash with a "stale" tooltip instead of a live-looking number —
+ * same "cells don't lie" rule as the Proxmox/Docker Swarm tables.
+ */
+const renderLatestMetricCell: RenderLatestMetricCellFunction = (
+  item: IoTDevice,
+  hasValue: boolean,
+  renderValue: () => ReactElement,
+): ReactElement => {
+  if (!hasValue) {
+    return <span className="text-sm text-gray-400">—</span>;
+  }
+
+  if (!areLatestMetricsFresh(item)) {
+    return (
+      <span className="text-sm text-gray-400" title={staleMetricsTitle(item)}>
+        —
+      </span>
+    );
+  }
+
+  return renderValue();
+};
 
 const IoTFleetDevices: FunctionComponent<
   PageComponentProps
@@ -41,15 +85,91 @@ const IoTFleetDevices: FunctionComponent<
         userPreferencesKey="iot-devices-table"
         query={{
           iotFleetId: modelId,
+          isArchived: false,
         }}
         isDeleteable={false}
-        isEditable={false}
+        isEditable={true}
         isCreateable={false}
+        formFields={[
+          {
+            field: {
+              expectedCheckinIntervalSeconds: true,
+            },
+            title: "Expected Check-in Interval (Seconds)",
+            description:
+              "How often this device is expected to report. Silence for 3x this interval marks it Offline and raises the fleet's offline alerts. Leave blank to use the fleet default.",
+            fieldType: FormFieldSchemaType.Number,
+            required: false,
+            placeholder: "Use fleet default",
+            validation: {
+              minValue: 1,
+            },
+          },
+          {
+            field: {
+              isArchived: true,
+            },
+            title: "Archived",
+            description:
+              "Archived devices are hidden from this list, excluded from fleet counts, and skipped by offline detection.",
+            fieldType: FormFieldSchemaType.Toggle,
+            required: false,
+          },
+        ]}
         showRefreshButton={true}
         name="IoT Devices"
         isViewable={true}
         searchableFields={["name", "externalId"]}
-        filters={[]}
+        sortBy="name"
+        sortOrder={SortOrder.Ascending}
+        selectMoreFields={{
+          externalId: true,
+          metricsUpdatedAt: true,
+          state: true,
+        }}
+        filters={[
+          {
+            field: {
+              kind: true,
+            },
+            title: "Kind",
+            type: FieldType.Dropdown,
+            filterDropdownOptions: IOT_DEVICE_KINDS.map(
+              (kind: IoTDeviceKind): DropdownOption => {
+                return { label: kind, value: kind };
+              },
+            ),
+          },
+          {
+            field: {
+              deviceType: true,
+            },
+            title: "Device Type",
+            type: FieldType.Text,
+          },
+          {
+            field: {
+              firmwareVersion: true,
+            },
+            title: "Firmware Version",
+            type: FieldType.Text,
+          },
+          {
+            field: {
+              state: true,
+            },
+            title: "State",
+            type: FieldType.Dropdown,
+            filterDropdownOptions: [
+              "Online",
+              "Offline",
+              "Stale",
+              "Retired",
+            ].map((state: string): DropdownOption => {
+              return { label: state, value: state };
+            }),
+          },
+        ]}
         cardProps={{
           title: "Devices",
           description:
@@ -106,11 +226,51 @@ const IoTFleetDevices: FunctionComponent<
           },
           {
             field: {
+              firmwareVersion: true,
+            },
+            title: "Firmware",
+            type: FieldType.Element,
+            hideOnMobile: true,
+            getElement: (item: IoTDevice): ReactElement => {
+              return (
+                <span className="text-sm text-gray-700">
+                  {(item.firmwareVersion as string) || "—"}
+                </span>
+              );
+            },
+          },
+          {
+            field: {
               isUp: true,
             },
             title: "Status",
             type: FieldType.Element,
             getElement: (item: IoTDevice): ReactElement => {
+              /*
+               * Lifecycle state wins over the raw isUp flag: a Stale
+               * device's last reported isUp is still true, but
+               * rendering it "Online" is exactly the lie the
+               * lifecycle states exist to fix. Legacy rows (state
+               * null) fall back to isUp.
+               */
+              const state: string | undefined = item.state as
+                | string
+                | undefined;
+              if (state === "Stale" || state === "Retired") {
+                return (
+                  <StatusBadge text={state} type={StatusBadgeType.Neutral} />
+                );
+              }
+              if (state === "Offline") {
+                return (
+                  <StatusBadge text="Offline" type={StatusBadgeType.Danger} />
+                );
+              }
+              if (state === "Online") {
+                return (
+                  <StatusBadge text="Online" type={StatusBadgeType.Success} />
+                );
+              }
               if (item.isUp === undefined || item.isUp === null) {
                 return <span className="text-sm text-gray-400">—</span>;
               }
@@ -132,22 +292,23 @@ const IoTFleetDevices: FunctionComponent<
             type: FieldType.Element,
             hideOnMobile: true,
             getElement: (item: IoTDevice): ReactElement => {
-              if (
-                item.latestBatteryPercent === undefined ||
-                item.latestBatteryPercent === null
-              ) {
-                return <span className="text-sm text-gray-400">—</span>;
-              }
-              const battery: number = Number(item.latestBatteryPercent);
-              const isLow: boolean = battery <= 20;
-              return (
-                <span
-                  className={`text-sm font-medium ${
-                    isLow ? "text-red-700" : "text-gray-700"
-                  }`}
-                >
-                  {formatPercent(battery)}
-                </span>
+              return renderLatestMetricCell(
+                item,
+                item.latestBatteryPercent !== undefined &&
+                  item.latestBatteryPercent !== null,
+                (): ReactElement => {
+                  const battery: number = Number(item.latestBatteryPercent);
+                  const isLow: boolean = battery <= 20;
+                  return (
+                    <span
+                      className={`text-sm font-medium ${
+                        isLow ? "text-red-700" : "text-gray-700"
+                      }`}
+                    >
+                      {formatPercent(battery)}
+                    </span>
+                  );
+                },
               );
             },
           },
@@ -159,16 +320,17 @@ const IoTFleetDevices: FunctionComponent<
             type: FieldType.Element,
             hideOnMobile: true,
             getElement: (item: IoTDevice): ReactElement => {
-              if (
-                item.latestSignalStrengthDbm === undefined ||
-                item.latestSignalStrengthDbm === null
-              ) {
-                return <span className="text-sm text-gray-400">—</span>;
-              }
-              return (
-                <span className="text-sm text-gray-700">
-                  {Number(item.latestSignalStrengthDbm).toFixed(0)} dBm
-                </span>
+              return renderLatestMetricCell(
+                item,
+                item.latestSignalStrengthDbm !== undefined &&
+                  item.latestSignalStrengthDbm !== null,
+                (): ReactElement => {
+                  return (
+                    <span className="text-sm text-gray-700">
+                      {Number(item.latestSignalStrengthDbm).toFixed(0)} dBm
+                    </span>
+                  );
+                },
               );
             },
           },
@@ -180,16 +342,17 @@ const IoTFleetDevices: FunctionComponent<
             type: FieldType.Element,
             hideOnMobile: true,
             getElement: (item: IoTDevice): ReactElement => {
-              if (
-                item.latestTemperatureCelsius === undefined ||
-                item.latestTemperatureCelsius === null
-              ) {
-                return <span className="text-sm text-gray-400">—</span>;
-              }
-              return (
-                <span className="text-sm text-gray-700">
-                  {Number(item.latestTemperatureCelsius).toFixed(1)} °C
-                </span>
+              return renderLatestMetricCell(
+                item,
+                item.latestTemperatureCelsius !== undefined &&
+                  item.latestTemperatureCelsius !== null,
+                (): ReactElement => {
+                  return (
+                    <span className="text-sm text-gray-700">
+                      {Number(item.latestTemperatureCelsius).toFixed(1)} °C
+                    </span>
+                  );
+                },
               );
             },
           },

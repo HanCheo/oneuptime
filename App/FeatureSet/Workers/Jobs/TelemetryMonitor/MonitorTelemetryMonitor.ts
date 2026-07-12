@@ -1,5 +1,7 @@
 import OneUptimeDate from "Common/Types/Date";
 import { LIMIT_PER_PROJECT } from "Common/Types/Database/LimitMax";
+import IncludesNone from "Common/Types/BaseDatabase/IncludesNone";
+import { IOT_FLEET_ROLLUP_METRIC_NAME_LIST } from "Common/Server/Utils/Telemetry/IoTSnapshotScan";
 import MonitorType from "Common/Types/Monitor/MonitorType";
 import MonitorService from "Common/Server/Services/MonitorService";
 import HostService from "Common/Server/Services/HostService";
@@ -54,7 +56,10 @@ import RollingTimeUtil from "Common/Types/RollingTime/RollingTimeUtil";
 import RollingTime from "Common/Types/RollingTime/RollingTime";
 import InBetween from "Common/Types/BaseDatabase/InBetween";
 import AggregatedResult from "Common/Types/BaseDatabase/AggregatedResult";
-import MetricService from "Common/Server/Services/MetricService";
+import MetricService, {
+  MetricPerSeriesAggregationResult,
+  PER_SERIES_AGGREGATION_MAX_ROWS,
+} from "Common/Server/Services/MetricService";
 import MetricTypeService from "Common/Server/Services/MetricTypeService";
 import MetricType from "Common/Models/DatabaseModels/MetricType";
 import MetricsAggregationType from "Common/Types/Metrics/MetricsAggregationType";
@@ -401,6 +406,96 @@ const loadNativeUnitsByMetricName: (input: {
 };
 
 /**
+ * Telemetry-source liveness probe for cluster/host-scoped monitors.
+ *
+ * Health-check-style series (e.g. ceph_health_detail) exist only while
+ * a problem is active, so a step whose queries all came back empty is
+ * ambiguous: either the source is healthy-and-quiet, or the agent/mgr
+ * died and NOTHING is being reported. Only in that ambiguous case does
+ * this run one limit-1 lookup for ANY metric carrying the source's
+ * scoping resource attribute inside the same evaluation window:
+ *
+ *   - any step query returned data     → true (no extra query),
+ *   - probe finds any row              → true (quiet but alive),
+ *   - probe finds nothing              → false (total blackout),
+ *   - no scoping attribute to probe by → undefined (unknown; legacy
+ *     behavior downstream).
+ *
+ * `false` makes MetricMonitorCriteria refuse to TreatAsZero and makes
+ * MonitorResource hold status/incidents instead of reverting to the
+ * default status — a dead agent must never auto-resolve incidents.
+ */
+const checkTelemetrySourceReporting: (input: {
+  projectId: ObjectID;
+  startAndEndDate: InBetween<Date>;
+  sourceAttributes: Dictionary<string>;
+  stepResults: Array<AggregatedResult>;
+  excludeMetricNames?: ReadonlyArray<string> | undefined;
+}) => Promise<boolean | undefined> = async (input: {
+  projectId: ObjectID;
+  startAndEndDate: InBetween<Date>;
+  sourceAttributes: Dictionary<string>;
+  stepResults: Array<AggregatedResult>;
+  excludeMetricNames?: ReadonlyArray<string> | undefined;
+}): Promise<boolean | undefined> => {
+  const hasAnyData: boolean = input.stepResults.some(
+    (result: AggregatedResult) => {
+      return Boolean(result.data && result.data.length > 0);
+    },
+  );
+
+  if (hasAnyData) {
+    return true;
+  }
+
+  if (Object.keys(input.sourceAttributes).length === 0) {
+    return undefined;
+  }
+
+  try {
+    /*
+     * excludeMetricNames makes the probe blind to server-synthesized
+     * series that keep flowing while the source itself is dark — the
+     * IoT fleet rollups carry the fleet's scoping attribute every
+     * minute regardless of collector health, and counting them as
+     * "reporting" would defeat the blackout hold this probe exists
+     * to provide.
+     */
+    const anyMetricFromSource: Array<Metric> = await MetricService.findBy({
+      query: {
+        projectId: input.projectId,
+        time: input.startAndEndDate,
+        attributes: input.sourceAttributes,
+        ...(input.excludeMetricNames && input.excludeMetricNames.length > 0
+          ? { name: new IncludesNone([...input.excludeMetricNames]) }
+          : {}),
+      } as Query<Metric>,
+      select: {
+        time: true,
+      },
+      limit: 1,
+      skip: 0,
+      props: {
+        isRoot: true,
+      },
+    });
+
+    return anyMetricFromSource.length > 0;
+  } catch (err) {
+    logger.error("Telemetry source liveness probe failed", {
+      service: "workers",
+      projectId: input.projectId.toString(),
+    });
+    logger.error(err, {
+      service: "workers",
+      projectId: input.projectId.toString(),
+    });
+    // Probe failure must not freeze the monitor — fall back to legacy.
+    return undefined;
+  }
+};
+
+/**
  * Collect the union of attribute keys the user asked to group by
  * across every queryConfig on the monitor step. Per-series
  * alerting needs a consistent key set across queries so formula
@@ -476,22 +571,24 @@ const bucketAggregatedResultBySeries: (input: {
 };
 
 /**
- * Per-series aggregation path: fetch raw metric rows and bucket them
- * by (series fingerprint, minute bucket) in code. Returns an
+ * LEGACY FALLBACK — per-series aggregation in code: bucket raw metric
+ * rows by (series fingerprint, minute bucket) in JS. Returns an
  * AggregatedResult shaped identically to what `MetricService.aggregateBy`
  * would have produced with `GROUP BY time, attributes`.
  *
- * Why in-code instead of SQL GROUP BY: ClickHouse's parameterized
- * query returns 0 rows when the GROUP BY clause includes the nested
- * `attributes` Map column, even though running the exact same SQL
- * directly returns rows. This is a quirk of the @clickhouse/client
- * parameter binding for Map columns. Rather than work around the
- * library bug we fetch raw rows (just like the Kubernetes monitor
- * already does for its per-resource breakdown) and aggregate in JS.
- * For the realistic monitor shape — hundreds of hosts × ~60 samples
- * per minute — the extra work is negligible compared to a cron tick.
+ * The primary path is now `MetricService.aggregateByAttributeSeries`,
+ * which pushes the GROUP BY into ClickHouse by extracting each group-by
+ * attribute key as a scalar column (sidestepping the @clickhouse/client
+ * quirk where a parameterized GROUP BY over the nested `attributes` Map
+ * column returns 0 rows — the original reason this JS path existed).
+ * This function only runs when the server-side path fails, via
+ * `fetchPerSeriesAggregatedResult`, which caps the raw fetch at
+ * LIMIT_PER_PROJECT rows and loudly reports any truncation. Do not call
+ * this with an uncapped row set.
+ *
+ * Exported for tests only (PerSeriesAggregationFallback.test.ts).
  */
-const aggregatePerSeriesFromRawMetrics: (input: {
+export const aggregatePerSeriesFromRawMetrics: (input: {
   rawMetrics: Array<Metric>;
   attributeKeys: Array<string>;
   aggregationType: MetricsAggregationType;
@@ -611,12 +708,42 @@ const aggregatePerSeriesFromRawMetrics: (input: {
         break;
       }
       case MetricsAggregationType.Avg:
-      default:
         aggregated =
           vs.reduce((a: number, b: number) => {
             return a + b;
           }, 0) / vs.length;
         break;
+      default: {
+        /*
+         * Percentiles (P50–P99) via nearest-rank — an acceptable
+         * in-process approximation of ClickHouse's quantile(), so a
+         * fallback evaluation keeps percentile semantics instead of
+         * silently degrading to Avg (which sits far below P95/P99 on
+         * latency-shaped distributions and would mask breaches exactly
+         * when ClickHouse is degraded).
+         */
+        const percentileLevel: number | null = getPercentileLevel(
+          input.aggregationType,
+        );
+        if (percentileLevel !== null) {
+          const sorted: Array<number> = [...vs].sort((a: number, b: number) => {
+            return a - b;
+          });
+          const rankIndex: number = Math.min(
+            sorted.length - 1,
+            Math.max(0, Math.ceil(percentileLevel * sorted.length) - 1),
+          );
+          aggregated = sorted[rankIndex]!;
+          break;
+        }
+
+        // Unknown aggregation types fall back to Avg (legacy behavior).
+        aggregated =
+          vs.reduce((a: number, b: number) => {
+            return a + b;
+          }, 0) / vs.length;
+        break;
+      }
     }
 
     rows.push({
@@ -627,6 +754,125 @@ const aggregatePerSeriesFromRawMetrics: (input: {
   }
 
   return { data: rows };
+};
+
+/**
+ * Per-series aggregation for a group-by telemetry monitor query.
+ *
+ * Primary path: `MetricService.aggregateByAttributeSeries` — ClickHouse
+ * GROUP BYs minute buckets × the requested attribute keys server-side,
+ * so the row volume scales with `series × minutes` instead of
+ * `series × raw samples`. This removes the old LIMIT_PER_PROJECT raw-row
+ * cap that silently dropped later-sorted series (i.e. whole devices /
+ * pods / OSDs) from evaluation at fleet scale.
+ *
+ * Fallback path: if the server-side aggregation fails for any reason,
+ * fall back to the legacy capped raw fetch + in-process aggregation so
+ * the monitor still evaluates. Every truncation on either path emits a
+ * logger.warn carrying the monitorId and the dropped row count —
+ * truncation is never silent.
+ */
+const fetchPerSeriesAggregatedResult: (input: {
+  query: Query<Metric>;
+  attributeKeys: Array<string>;
+  aggregationType: MetricsAggregationType;
+  monitorId: ObjectID;
+  projectId: ObjectID;
+}) => Promise<AggregatedResult> = async (input: {
+  query: Query<Metric>;
+  attributeKeys: Array<string>;
+  aggregationType: MetricsAggregationType;
+  monitorId: ObjectID;
+  projectId: ObjectID;
+}): Promise<AggregatedResult> => {
+  const logAttributes: LogAttributes = {
+    service: "workers",
+    monitorId: input.monitorId.toString(),
+    projectId: input.projectId.toString(),
+  };
+
+  try {
+    const serverSide: MetricPerSeriesAggregationResult =
+      await MetricService.aggregateByAttributeSeries({
+        query: input.query,
+        aggregationType: input.aggregationType,
+        groupByAttributeKeys: input.attributeKeys,
+        props: {
+          isRoot: true,
+        },
+      });
+
+    if (serverSide.truncated) {
+      logger.warn(
+        `Per-series metric aggregation truncated for monitor ${input.monitorId.toString()}: ${serverSide.droppedRowCount} aggregated series-time rows beyond the ${PER_SERIES_AGGREGATION_MAX_ROWS}-row cap were dropped. Some series (devices/pods/hosts) are missing from this evaluation — shorten the rolling window or narrow the monitor's filters.`,
+        logAttributes,
+      );
+    }
+
+    return serverSide.result;
+  } catch (err) {
+    logger.error(
+      `Server-side per-series aggregation failed for monitor ${input.monitorId.toString()} (aggregation: ${input.aggregationType}); falling back to capped raw-row aggregation with in-process ${input.aggregationType}.`,
+      logAttributes,
+    );
+    logger.error(err, logAttributes);
+  }
+
+  /*
+   * Legacy fallback: capped raw fetch + in-process aggregation. The cap
+   * means series can be dropped at fleet scale, so when it is hit we
+   * quantify the loss (count query, only paid on the truncated path)
+   * and warn loudly.
+   */
+  const rawMetrics: Array<Metric> = await MetricService.findBy({
+    query: input.query,
+    select: {
+      attributes: true,
+      value: true,
+      time: true,
+    },
+    sort: {
+      time: SortOrder.Descending,
+    },
+    limit: LIMIT_PER_PROJECT,
+    skip: 0,
+    props: {
+      isRoot: true,
+    },
+  });
+
+  if (rawMetrics.length >= LIMIT_PER_PROJECT) {
+    let droppedRowCount: number | undefined = undefined;
+
+    try {
+      const totalRows: PositiveNumber = await MetricService.countBy({
+        query: input.query,
+        skip: 0,
+        limit: LIMIT_PER_PROJECT,
+        props: {
+          isRoot: true,
+        },
+      });
+      droppedRowCount = Math.max(0, totalRows.toNumber() - rawMetrics.length);
+    } catch (countErr) {
+      logger.error(countErr, logAttributes);
+    }
+
+    logger.warn(
+      `Per-series raw metric fetch hit the ${LIMIT_PER_PROJECT}-row cap for monitor ${input.monitorId.toString()}: ${
+        droppedRowCount !== undefined
+          ? `${droppedRowCount} raw rows`
+          : "an unknown number of raw rows"
+      } in the evaluation window were dropped. Later-sorted series (devices/pods/hosts) are missing from this evaluation.`,
+      logAttributes,
+    );
+  }
+
+  return aggregatePerSeriesFromRawMetrics({
+    rawMetrics,
+    attributeKeys: input.attributeKeys,
+    aggregationType: input.aggregationType,
+  });
 };
 
 /**
@@ -1532,27 +1778,12 @@ const monitorKubernetes: MonitorKubernetesFunction = async (data: {
     let aggregatedResults: AggregatedResult;
 
     if (groupByAttributeKeys.length > 0) {
-      const rawMetricsForAgg: Array<Metric> = await MetricService.findBy({
+      aggregatedResults = await fetchPerSeriesAggregatedResult({
         query: query,
-        select: {
-          attributes: true,
-          value: true,
-          time: true,
-        },
-        sort: {
-          time: SortOrder.Descending,
-        },
-        limit: LIMIT_PER_PROJECT,
-        skip: 0,
-        props: {
-          isRoot: true,
-        },
-      });
-
-      aggregatedResults = aggregatePerSeriesFromRawMetrics({
-        rawMetrics: rawMetricsForAgg,
         attributeKeys: groupByAttributeKeys,
         aggregationType,
+        monitorId: data.monitorId,
+        projectId: data.projectId,
       });
     } else {
       aggregatedResults = await MetricService.aggregateBy({
@@ -1584,6 +1815,19 @@ const monitorKubernetes: MonitorKubernetesFunction = async (data: {
     });
 
     finalResult.push(aggregatedResults);
+
+    /*
+     * Build the per-resource breakdown from the FIRST query that returns
+     * rows. For multi-query ratio/difference configs the first query is
+     * the numerator/minuend — the diagnostic metric incidents should rank
+     * resources by; later denominator queries (capacity/allocatable) must
+     * not overwrite it, otherwise the root-cause table sorts nodes by
+     * disk size instead of fullness. Skipping also saves a redundant
+     * MetricService.findBy per extra query.
+     */
+    if (kubernetesResourceBreakdown) {
+      continue;
+    }
 
     // Fetch raw metrics to extract per-resource Kubernetes context
     try {
@@ -1740,6 +1984,24 @@ const monitorKubernetes: MonitorKubernetesFunction = async (data: {
         })
       : undefined;
 
+  /*
+   * All-empty step results are ambiguous (quiet cluster vs dead agent);
+   * probe the cluster's scoping attribute so a collection blackout
+   * holds monitor state instead of auto-resolving via default status.
+   */
+  const isTelemetrySourceReporting: boolean | undefined =
+    await checkTelemetrySourceReporting({
+      projectId: data.projectId,
+      startAndEndDate: startAndEndDate,
+      sourceAttributes: kubernetesMonitorConfig.clusterIdentifier
+        ? {
+            "resource.k8s.cluster.name":
+              kubernetesMonitorConfig.clusterIdentifier,
+          }
+        : {},
+      stepResults: finalResult,
+    });
+
   return {
     projectId: data.projectId,
     metricViewConfig: kubernetesMonitorConfig.metricViewConfig,
@@ -1748,6 +2010,7 @@ const monitorKubernetes: MonitorKubernetesFunction = async (data: {
     monitorId: data.monitorId,
     kubernetesResourceBreakdown: kubernetesResourceBreakdown,
     seriesBreakdown: seriesBreakdown,
+    isTelemetrySourceReporting: isTelemetrySourceReporting,
   };
 };
 
@@ -1839,27 +2102,12 @@ const monitorDocker: MonitorDockerFunction = async (data: {
     let aggregatedResults: AggregatedResult;
 
     if (groupByAttributeKeys.length > 0) {
-      const rawMetricsForAgg: Array<Metric> = await MetricService.findBy({
+      aggregatedResults = await fetchPerSeriesAggregatedResult({
         query: query,
-        select: {
-          attributes: true,
-          value: true,
-          time: true,
-        },
-        sort: {
-          time: SortOrder.Descending,
-        },
-        limit: LIMIT_PER_PROJECT,
-        skip: 0,
-        props: {
-          isRoot: true,
-        },
-      });
-
-      aggregatedResults = aggregatePerSeriesFromRawMetrics({
-        rawMetrics: rawMetricsForAgg,
         attributeKeys: groupByAttributeKeys,
         aggregationType,
+        monitorId: data.monitorId,
+        projectId: data.projectId,
       });
     } else {
       aggregatedResults = await MetricService.aggregateBy({
@@ -1921,6 +2169,30 @@ const monitorDocker: MonitorDockerFunction = async (data: {
         })
       : undefined;
 
+  /*
+   * All-empty step results are ambiguous (quiet containers vs dead
+   * agent); probe the monitor's own scoping attributes so a collection
+   * blackout holds monitor state instead of auto-resolving via default
+   * status. Runtime is always stamped on Docker batches, so scope by it
+   * plus the host when one is configured.
+   */
+  const dockerSourceAttributes: Dictionary<string> = {
+    "resource.container.runtime": "docker",
+  };
+
+  if (dockerMonitorConfig.hostIdentifier) {
+    dockerSourceAttributes["resource.host.name"] =
+      dockerMonitorConfig.hostIdentifier;
+  }
+
+  const isTelemetrySourceReporting: boolean | undefined =
+    await checkTelemetrySourceReporting({
+      projectId: data.projectId,
+      startAndEndDate: startAndEndDate,
+      sourceAttributes: dockerSourceAttributes,
+      stepResults: finalResult,
+    });
+
   return {
     projectId: data.projectId,
     metricViewConfig: dockerMonitorConfig.metricViewConfig,
@@ -1928,6 +2200,7 @@ const monitorDocker: MonitorDockerFunction = async (data: {
     metricResult: resultsWithFormulas,
     seriesBreakdown: seriesBreakdown,
     monitorId: data.monitorId,
+    isTelemetrySourceReporting: isTelemetrySourceReporting,
   };
 };
 
@@ -2006,27 +2279,12 @@ const monitorHost: MonitorHostFunction = async (data: {
     let aggregatedResults: AggregatedResult;
 
     if (groupByAttributeKeys.length > 0) {
-      const rawMetricsForAgg: Array<Metric> = await MetricService.findBy({
+      aggregatedResults = await fetchPerSeriesAggregatedResult({
         query: query,
-        select: {
-          attributes: true,
-          value: true,
-          time: true,
-        },
-        sort: {
-          time: SortOrder.Descending,
-        },
-        limit: LIMIT_PER_PROJECT,
-        skip: 0,
-        props: {
-          isRoot: true,
-        },
-      });
-
-      aggregatedResults = aggregatePerSeriesFromRawMetrics({
-        rawMetrics: rawMetricsForAgg,
         attributeKeys: groupByAttributeKeys,
         aggregationType,
+        monitorId: data.monitorId,
+        projectId: data.projectId,
       });
     } else {
       aggregatedResults = await MetricService.aggregateBy({
@@ -2108,6 +2366,23 @@ const monitorHost: MonitorHostFunction = async (data: {
     });
   }
 
+  /*
+   * All-empty step results are ambiguous (quiet host vs dead agent);
+   * probe the host's scoping attribute so a collection blackout holds
+   * monitor state instead of auto-resolving via default status.
+   */
+  const isTelemetrySourceReporting: boolean | undefined =
+    await checkTelemetrySourceReporting({
+      projectId: data.projectId,
+      startAndEndDate: startAndEndDate,
+      sourceAttributes: hostMonitorConfig.hostIdentifier
+        ? {
+            "resource.host.name": hostMonitorConfig.hostIdentifier,
+          }
+        : {},
+      stepResults: finalResult,
+    });
+
   return {
     projectId: data.projectId,
     metricViewConfig: hostMonitorConfig.metricViewConfig,
@@ -2115,6 +2390,7 @@ const monitorHost: MonitorHostFunction = async (data: {
     metricResult: resultsWithFormulas,
     seriesBreakdown: seriesBreakdown,
     monitorId: data.monitorId,
+    isTelemetrySourceReporting: isTelemetrySourceReporting,
   };
 };
 
@@ -2206,27 +2482,12 @@ const monitorPodman: MonitorPodmanFunction = async (data: {
     let aggregatedResults: AggregatedResult;
 
     if (groupByAttributeKeys.length > 0) {
-      const rawMetricsForAgg: Array<Metric> = await MetricService.findBy({
+      aggregatedResults = await fetchPerSeriesAggregatedResult({
         query: query,
-        select: {
-          attributes: true,
-          value: true,
-          time: true,
-        },
-        sort: {
-          time: SortOrder.Descending,
-        },
-        limit: LIMIT_PER_PROJECT,
-        skip: 0,
-        props: {
-          isRoot: true,
-        },
-      });
-
-      aggregatedResults = aggregatePerSeriesFromRawMetrics({
-        rawMetrics: rawMetricsForAgg,
         attributeKeys: groupByAttributeKeys,
         aggregationType,
+        monitorId: data.monitorId,
+        projectId: data.projectId,
       });
     } else {
       aggregatedResults = await MetricService.aggregateBy({
@@ -2288,6 +2549,30 @@ const monitorPodman: MonitorPodmanFunction = async (data: {
         })
       : undefined;
 
+  /*
+   * All-empty step results are ambiguous (quiet containers vs dead
+   * agent); probe the monitor's own scoping attributes so a collection
+   * blackout holds monitor state instead of auto-resolving via default
+   * status. Runtime is always stamped on Podman batches, so scope by it
+   * plus the host when one is configured.
+   */
+  const podmanSourceAttributes: Dictionary<string> = {
+    "resource.container.runtime": "podman",
+  };
+
+  if (podmanMonitorConfig.hostIdentifier) {
+    podmanSourceAttributes["resource.host.name"] =
+      podmanMonitorConfig.hostIdentifier;
+  }
+
+  const isTelemetrySourceReporting: boolean | undefined =
+    await checkTelemetrySourceReporting({
+      projectId: data.projectId,
+      startAndEndDate: startAndEndDate,
+      sourceAttributes: podmanSourceAttributes,
+      stepResults: finalResult,
+    });
+
   return {
     projectId: data.projectId,
     metricViewConfig: podmanMonitorConfig.metricViewConfig,
@@ -2295,6 +2580,7 @@ const monitorPodman: MonitorPodmanFunction = async (data: {
     metricResult: resultsWithFormulas,
     seriesBreakdown: seriesBreakdown,
     monitorId: data.monitorId,
+    isTelemetrySourceReporting: isTelemetrySourceReporting,
   };
 };
 
@@ -2408,27 +2694,12 @@ const monitorProxmox: MonitorProxmoxFunction = async (data: {
     let aggregatedResults: AggregatedResult;
 
     if (groupByAttributeKeys.length > 0) {
-      const rawMetricsForAgg: Array<Metric> = await MetricService.findBy({
+      aggregatedResults = await fetchPerSeriesAggregatedResult({
         query: query,
-        select: {
-          attributes: true,
-          value: true,
-          time: true,
-        },
-        sort: {
-          time: SortOrder.Descending,
-        },
-        limit: LIMIT_PER_PROJECT,
-        skip: 0,
-        props: {
-          isRoot: true,
-        },
-      });
-
-      aggregatedResults = aggregatePerSeriesFromRawMetrics({
-        rawMetrics: rawMetricsForAgg,
         attributeKeys: groupByAttributeKeys,
         aggregationType,
+        monitorId: data.monitorId,
+        projectId: data.projectId,
       });
     } else {
       aggregatedResults = await MetricService.aggregateBy({
@@ -2581,6 +2852,24 @@ const monitorProxmox: MonitorProxmoxFunction = async (data: {
         })
       : undefined;
 
+  /*
+   * All-empty step results are ambiguous (quiet cluster vs dead agent);
+   * probe the cluster's scoping attribute so a collection blackout
+   * holds monitor state instead of auto-resolving via default status.
+   */
+  const isTelemetrySourceReporting: boolean | undefined =
+    await checkTelemetrySourceReporting({
+      projectId: data.projectId,
+      startAndEndDate: startAndEndDate,
+      sourceAttributes: proxmoxMonitorConfig.clusterIdentifier
+        ? {
+            "resource.proxmox.cluster.name":
+              proxmoxMonitorConfig.clusterIdentifier,
+          }
+        : {},
+      stepResults: finalResult,
+    });
+
   return {
     projectId: data.projectId,
     metricViewConfig: proxmoxMonitorConfig.metricViewConfig,
@@ -2589,6 +2878,7 @@ const monitorProxmox: MonitorProxmoxFunction = async (data: {
     proxmoxResourceBreakdown: proxmoxResourceBreakdown,
     seriesBreakdown: seriesBreakdown,
     monitorId: data.monitorId,
+    isTelemetrySourceReporting: isTelemetrySourceReporting,
   };
 };
 
@@ -2690,27 +2980,12 @@ const monitorIoT: MonitorIoTFunction = async (data: {
     let aggregatedResults: AggregatedResult;
 
     if (groupByAttributeKeys.length > 0) {
-      const rawMetricsForAgg: Array<Metric> = await MetricService.findBy({
+      aggregatedResults = await fetchPerSeriesAggregatedResult({
         query: query,
-        select: {
-          attributes: true,
-          value: true,
-          time: true,
-        },
-        sort: {
-          time: SortOrder.Descending,
-        },
-        limit: LIMIT_PER_PROJECT,
-        skip: 0,
-        props: {
-          isRoot: true,
-        },
-      });
-
-      aggregatedResults = aggregatePerSeriesFromRawMetrics({
-        rawMetrics: rawMetricsForAgg,
         attributeKeys: groupByAttributeKeys,
         aggregationType,
+        monitorId: data.monitorId,
+        projectId: data.projectId,
       });
     } else {
       aggregatedResults = await MetricService.aggregateBy({
@@ -2799,6 +3074,29 @@ const monitorIoT: MonitorIoTFunction = async (data: {
     });
   }
 
+  /*
+   * All-empty step results are ambiguous (quiet fleet vs dead gateway);
+   * probe the fleet's scoping attribute so a collection blackout holds
+   * monitor state instead of auto-resolving via default status. The
+   * probe excludes the server-computed iot_fleet_* rollup series: the
+   * ComputeFleetRollups worker keeps emitting those every minute even
+   * while the fleet's collector is dark (that is how the fleet-level
+   * blackout alert fires), so counting them as "reporting" would
+   * auto-resolve per-device incidents mid-blackout.
+   */
+  const isTelemetrySourceReporting: boolean | undefined =
+    await checkTelemetrySourceReporting({
+      projectId: data.projectId,
+      startAndEndDate: startAndEndDate,
+      sourceAttributes: iotMonitorConfig.fleetIdentifier
+        ? {
+            "resource.iot.fleet.name": iotMonitorConfig.fleetIdentifier,
+          }
+        : {},
+      stepResults: finalResult,
+      excludeMetricNames: IOT_FLEET_ROLLUP_METRIC_NAME_LIST,
+    });
+
   return {
     projectId: data.projectId,
     metricViewConfig: iotMonitorConfig.metricViewConfig,
@@ -2806,6 +3104,7 @@ const monitorIoT: MonitorIoTFunction = async (data: {
     metricResult: resultsWithFormulas,
     seriesBreakdown: seriesBreakdown,
     monitorId: data.monitorId,
+    isTelemetrySourceReporting: isTelemetrySourceReporting,
   };
 };
 
@@ -2921,27 +3220,12 @@ const monitorDockerSwarm: MonitorDockerSwarmFunction = async (data: {
     let aggregatedResults: AggregatedResult;
 
     if (groupByAttributeKeys.length > 0) {
-      const rawMetricsForAgg: Array<Metric> = await MetricService.findBy({
+      aggregatedResults = await fetchPerSeriesAggregatedResult({
         query: query,
-        select: {
-          attributes: true,
-          value: true,
-          time: true,
-        },
-        sort: {
-          time: SortOrder.Descending,
-        },
-        limit: LIMIT_PER_PROJECT,
-        skip: 0,
-        props: {
-          isRoot: true,
-        },
-      });
-
-      aggregatedResults = aggregatePerSeriesFromRawMetrics({
-        rawMetrics: rawMetricsForAgg,
         attributeKeys: groupByAttributeKeys,
         aggregationType,
+        monitorId: data.monitorId,
+        projectId: data.projectId,
       });
     } else {
       aggregatedResults = await MetricService.aggregateBy({
@@ -3092,6 +3376,24 @@ const monitorDockerSwarm: MonitorDockerSwarmFunction = async (data: {
         })
       : undefined;
 
+  /*
+   * All-empty step results are ambiguous (quiet cluster vs dead agent);
+   * probe the cluster's scoping attribute so a collection blackout
+   * holds monitor state instead of auto-resolving via default status.
+   */
+  const isTelemetrySourceReporting: boolean | undefined =
+    await checkTelemetrySourceReporting({
+      projectId: data.projectId,
+      startAndEndDate: startAndEndDate,
+      sourceAttributes: dockerSwarmMonitorConfig.clusterIdentifier
+        ? {
+            "resource.docker.swarm.cluster.name":
+              dockerSwarmMonitorConfig.clusterIdentifier,
+          }
+        : {},
+      stepResults: finalResult,
+    });
+
   return {
     projectId: data.projectId,
     metricViewConfig: dockerSwarmMonitorConfig.metricViewConfig,
@@ -3100,6 +3402,7 @@ const monitorDockerSwarm: MonitorDockerSwarmFunction = async (data: {
     dockerSwarmResourceBreakdown: dockerSwarmResourceBreakdown,
     seriesBreakdown: seriesBreakdown,
     monitorId: data.monitorId,
+    isTelemetrySourceReporting: isTelemetrySourceReporting,
   };
 };
 
@@ -3201,27 +3504,12 @@ const monitorCeph: MonitorCephFunction = async (data: {
     let aggregatedResults: AggregatedResult;
 
     if (groupByAttributeKeys.length > 0) {
-      const rawMetricsForAgg: Array<Metric> = await MetricService.findBy({
+      aggregatedResults = await fetchPerSeriesAggregatedResult({
         query: query,
-        select: {
-          attributes: true,
-          value: true,
-          time: true,
-        },
-        sort: {
-          time: SortOrder.Descending,
-        },
-        limit: LIMIT_PER_PROJECT,
-        skip: 0,
-        props: {
-          isRoot: true,
-        },
-      });
-
-      aggregatedResults = aggregatePerSeriesFromRawMetrics({
-        rawMetrics: rawMetricsForAgg,
         attributeKeys: groupByAttributeKeys,
         aggregationType,
+        monitorId: data.monitorId,
+        projectId: data.projectId,
       });
     } else {
       aggregatedResults = await MetricService.aggregateBy({
@@ -3373,6 +3661,25 @@ const monitorCeph: MonitorCephFunction = async (data: {
         })
       : undefined;
 
+  /*
+   * ceph_health_detail series vanish when their check clears, so empty
+   * step results alone cannot distinguish "healthy" from "mgr/agent
+   * dead". Probe the cluster's own scoping attribute; false blocks the
+   * TreatAsZero recover filters and the default-status revert from
+   * auto-resolving incidents during a blackout.
+   */
+  const isTelemetrySourceReporting: boolean | undefined =
+    await checkTelemetrySourceReporting({
+      projectId: data.projectId,
+      startAndEndDate: startAndEndDate,
+      sourceAttributes: cephMonitorConfig.clusterIdentifier
+        ? {
+            "resource.ceph.cluster.name": cephMonitorConfig.clusterIdentifier,
+          }
+        : {},
+      stepResults: finalResult,
+    });
+
   return {
     projectId: data.projectId,
     metricViewConfig: cephMonitorConfig.metricViewConfig,
@@ -3381,6 +3688,7 @@ const monitorCeph: MonitorCephFunction = async (data: {
     cephResourceBreakdown: cephResourceBreakdown,
     seriesBreakdown: seriesBreakdown,
     monitorId: data.monitorId,
+    isTelemetrySourceReporting: isTelemetrySourceReporting,
   };
 };
 

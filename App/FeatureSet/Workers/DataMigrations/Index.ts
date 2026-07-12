@@ -52,6 +52,7 @@ import DeleteAllTelemetryAttributes from "./DeleteAllTelemetryAttributes";
 import DropDescriptionAndUnitColumnFromMetrics from "./DropDescriptionAndUnitColumnFromMetrics";
 import RefreshOnCallSchedulesToAddCurrentUserOnRoster from "./RefreshOnCallSchedulesToAddCurrentUserOnRoster";
 import AddOnCallNotificationForUsers from "./AddOnCallNotificationForUsers";
+import AddInfrastructureClusterOwnerNotificationSettings from "./AddInfrastructureClusterOwnerNotificationSettings";
 import StartOnCallUserTimeLog from "./StartOnCallUserTimeLog";
 import LowercaseDomains from "./LowercaseDomains";
 import AddAttributeKeysColumnToTelemetryTables from "./AddAttributeKeysColumnToTelemetryTables";
@@ -192,6 +193,7 @@ const DataMigrations: Array<DataMigrationBase> = [
   new AddTelemetryV3ColumnCodecs(),
   new RebuildMetricBaselineHourlyWithBFloat16Quantiles(),
   new AddDedupWindowToTelemetryTables(),
+  new AddInfrastructureClusterOwnerNotificationSettings(),
   /*
    * Ordered after MigrateTelemetryToV3PrimaryEntityId: the pre-V3 tables
    * must already be superseded (never the live generation) when they are

@@ -58,6 +58,56 @@ enum NotificationSettingEventType {
   SEND_AI_AGENT_STATUS_CHANGED_OWNER_NOTIFICATION = "Send AI agent status changed notification when I am the owner of the AI agent",
   SEND_AI_AGENT_OWNER_ADDED_NOTIFICATION = "Send notification when I am added as a owner to the AI agent",
 
+  // Kubernetes Clusters
+  SEND_KUBERNETES_CLUSTER_OWNER_ADDED_NOTIFICATION = "Send notification when I am added as a owner to the Kubernetes cluster",
+
+  // Proxmox Clusters
+  SEND_PROXMOX_CLUSTER_OWNER_ADDED_NOTIFICATION = "Send notification when I am added as a owner to the Proxmox cluster",
+
+  // Ceph Clusters
+  SEND_CEPH_CLUSTER_OWNER_ADDED_NOTIFICATION = "Send notification when I am added as a owner to the Ceph cluster",
+
+  // Docker Swarm Clusters
+  SEND_DOCKER_SWARM_CLUSTER_OWNER_ADDED_NOTIFICATION = "Send notification when I am added as a owner to the Docker Swarm cluster",
+
+  // IoT Fleets
+  SEND_IOT_FLEET_OWNER_ADDED_NOTIFICATION = "Send notification when I am added as a owner to the IoT fleet",
+
+  // Monitor Groups
+  SEND_MONITOR_GROUP_OWNER_ADDED_NOTIFICATION = "Send notification when I am added as a owner to the monitor group",
+
+  // Hosts
+  SEND_HOST_OWNER_ADDED_NOTIFICATION = "Send notification when I am added as a owner to the host",
+
+  // Docker Hosts
+  SEND_DOCKER_HOST_OWNER_ADDED_NOTIFICATION = "Send notification when I am added as a owner to the Docker host",
+
+  // Podman Hosts
+  SEND_PODMAN_HOST_OWNER_ADDED_NOTIFICATION = "Send notification when I am added as a owner to the Podman host",
+
+  // Cloud Resources
+  SEND_CLOUD_RESOURCE_OWNER_ADDED_NOTIFICATION = "Send notification when I am added as a owner to the cloud resource",
+
+  // Serverless Functions
+  SEND_SERVERLESS_FUNCTION_OWNER_ADDED_NOTIFICATION = "Send notification when I am added as a owner to the serverless function",
+
+  // RUM Applications
+  SEND_RUM_APPLICATION_OWNER_ADDED_NOTIFICATION = "Send notification when I am added as a owner to the RUM application",
+
+  // Dashboards
+  SEND_DASHBOARD_OWNER_ADDED_NOTIFICATION = "Send notification when I am added as a owner to the dashboard",
+
+  // Workflows
+  SEND_WORKFLOW_OWNER_ADDED_NOTIFICATION = "Send notification when I am added as a owner to the workflow",
+
+  // Runbooks
+  SEND_RUNBOOK_OWNER_ADDED_NOTIFICATION = "Send notification when I am added as a owner to the runbook",
+
+  // On-Call Resource Ownership
+  SEND_ON_CALL_DUTY_POLICY_OWNER_ADDED_NOTIFICATION = "Send notification when I am added as a owner to the on-call policy",
+  SEND_ON_CALL_DUTY_POLICY_SCHEDULE_OWNER_ADDED_NOTIFICATION = "Send notification when I am added as a owner to the on-call schedule",
+  SEND_INCOMING_CALL_POLICY_OWNER_ADDED_NOTIFICATION = "Send notification when I am added as a owner to the incoming call policy",
+
   // On Call Notifications
   SEND_WHEN_USER_IS_ON_CALL_ROSTER = "When user is on-call roster",
   SEND_WHEN_USER_IS_NEXT_ON_CALL_ROSTER = "When user is next on-call roster",
