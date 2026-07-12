@@ -222,6 +222,8 @@ function readInitialUrlState(): InitialUrlState {
 export interface ExceptionsViewerProps {
   defaultStatus?: ExceptionStatus;
   primaryEntityId?: ObjectID | undefined;
+  environments?: Array<string> | undefined;
+  releases?: Array<string> | undefined;
 }
 
 const ExceptionsViewer: FunctionComponent<ExceptionsViewerProps> = (
@@ -603,6 +605,19 @@ const ExceptionsViewer: FunctionComponent<ExceptionsViewerProps> = (
       q.primaryEntityId = props.primaryEntityId;
     }
 
+    if (props.environments && props.environments.length > 0) {
+      (q as Record<string, unknown>)["environment"] =
+        props.environments.length === 1
+          ? props.environments[0]!
+          : new Includes(props.environments);
+    }
+    if (props.releases && props.releases.length > 0) {
+      (q as Record<string, unknown>)["release"] =
+        props.releases.length === 1
+          ? props.releases[0]!
+          : new Includes(props.releases);
+    }
+
     if (status === "unresolved") {
       q.isResolved = false;
       q.isArchived = false;
@@ -687,9 +702,10 @@ const ExceptionsViewer: FunctionComponent<ExceptionsViewerProps> = (
       dateRange.endValue,
     );
 
-    return q;
   }, [
     props.primaryEntityId,
+    props.environments,
+    props.releases,
     status,
     activeFilters,
     submittedSearch,
@@ -776,6 +792,13 @@ const ExceptionsViewer: FunctionComponent<ExceptionsViewerProps> = (
       groups["primaryEntityId"]!.push(props.primaryEntityId.toString());
     }
 
+    if (props.environments && props.environments.length > 0) {
+      if (!groups["environment"]) {
+        groups["environment"] = [];
+      }
+      groups["environment"]!.push(...props.environments);
+    }
+
     /*
      * Union primaryEntityId / hostId / dockerHostId / kubernetesClusterId
      * into a single serviceIds list — they all filter the underlying
@@ -829,6 +852,7 @@ const ExceptionsViewer: FunctionComponent<ExceptionsViewerProps> = (
     submittedSearch,
     parseSearch,
     props.primaryEntityId,
+    props.environments,
   ]);
 
   useEffect(() => {
@@ -1009,6 +1033,13 @@ const ExceptionsViewer: FunctionComponent<ExceptionsViewerProps> = (
       groups["primaryEntityId"]!.push(props.primaryEntityId.toString());
     }
 
+    if (props.environments && props.environments.length > 0) {
+      if (!groups["environment"]) {
+        groups["environment"] = [];
+      }
+      groups["environment"]!.push(...props.environments);
+    }
+
     const resourceIds: Set<string> = new Set<string>();
     for (const k of [
       "primaryEntityId",
@@ -1062,12 +1093,13 @@ const ExceptionsViewer: FunctionComponent<ExceptionsViewerProps> = (
       setFacetLoading(false);
     }
   }, [
-    timeRange,
     activeFilters,
+    facetSearchText,
     submittedSearch,
     parseSearch,
     props.primaryEntityId,
-    facetSearchText,
+    props.environments,
+    timeRange,
   ]);
 
   useEffect(() => {
@@ -1152,8 +1184,34 @@ const ExceptionsViewer: FunctionComponent<ExceptionsViewerProps> = (
         }),
       );
     }
+    if (props.environments) {
+      for (const environment of props.environments) {
+        base.push(
+          resolveDisplay({
+            facetKey: "environment",
+            value: environment,
+            displayKey: "Environment",
+            displayValue: environment,
+            readOnly: true,
+          }),
+        );
+      }
+    }
+    if (props.releases) {
+      for (const release of props.releases) {
+        base.push(
+          resolveDisplay({
+            facetKey: "release",
+            value: release,
+            displayKey: "Version",
+            displayValue: release,
+            readOnly: true,
+          }),
+        );
+      }
+    }
     return [...base, ...activeFilters.map(resolveDisplay)];
-  }, [props.primaryEntityId, activeFilters, facetConfigs]);
+  }, [props.primaryEntityId, props.environments, props.releases, activeFilters, facetConfigs]);
 
   // Row click → navigate to exception detail
   const handleRowClick: (exception: TelemetryException) => void = useCallback(

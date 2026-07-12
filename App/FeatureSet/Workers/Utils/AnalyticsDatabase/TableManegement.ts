@@ -19,7 +19,7 @@ import {
   getStorageTableName,
   onClusterClause,
 } from "Common/Server/Utils/AnalyticsDatabase/ClusterConfig";
-
+import { getClickhouseClusterName } from "Common/Utils/Telemetry/Sharding";
 /**
  * A column as it physically exists in ClickHouse (read from
  * system.columns) — used to detect drift between the model and the table.
@@ -1011,9 +1011,8 @@ export default class AnalyticsTableManagement {
       }
 
       try {
-        const targetTableName: string = this.getModelOwnedTableSettingsTargetName(
-          service,
-        );
+        const targetTableName: string =
+          this.getModelOwnedTableSettingsTargetName(service);
         const createQuery: string | null = await this.getTableCreateQuery(
           service,
           targetTableName,
@@ -1435,9 +1434,10 @@ export default class AnalyticsTableManagement {
   private static getOnClusterClause(
     service: AnalyticsDatabaseService<AnalyticsBaseModel>,
   ): string {
-    return service.model.isDistributedTableEnabled() &&
-      service.model.distributedClusterName
-      ? ` ON CLUSTER ${service.model.distributedClusterName}`
+    const clusterName: string | undefined =
+      service.model.distributedClusterName || getClickhouseClusterName();
+    return service.model.isDistributedTableEnabled() && clusterName
+      ? ` ON CLUSTER ${clusterName}`
       : "";
   }
 

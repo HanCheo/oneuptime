@@ -32,6 +32,7 @@ enum AnalyticsTableName {
   MetricItemAggMV1mByK8sCluster = "MetricItemAggMV1mByK8sCluster",
   MetricItemAggMV1mByContainer = "MetricItemAggMV1mByContainer",
   MetricItemAttributeAggMV1m = "MetricItemAttributeAggMV1m",
+  ServiceScopeAttributeAggMV1h = "ServiceScopeAttributeAggMV1h",
   MetricBaselineHourly = "MetricBaselineHourly",
   MutableMetric = "MutableMetricItem",
 }

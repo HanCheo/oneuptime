@@ -77,8 +77,27 @@ import ResourceFacetResolver, {
   ResolvedFacetValue,
   ResourceFacetSpec,
 } from "../Utils/Telemetry/ResourceFacetResolver";
+import ProjectService from "../Services/ProjectService";
+import ServiceScopeAttributeAggMV1hService, {
+  ServiceScopeAttributeKeySummaryRow,
+} from "../Services/ServiceScopeAttributeAggMV1hService";
 
 const router: ExpressRouter = Express.getRouter();
+
+const DEFAULT_SERVICE_SCOPE_ATTRIBUTE_KEYS: Array<string> = [
+  "resource.deployment.environment",
+  "resource.service.version",
+];
+
+const SERVICE_SCOPE_ATTRIBUTE_QUERY_KEY_EXPANSIONS: Record<string, Array<string>> = {
+  "resource.deployment.environment": [
+    "resource.deployment.environment",
+    "resource.deployment.environment.name",
+    "resource.oneuptime.label.env",
+  ],
+};
+
+const SERVICE_SCOPE_ATTRIBUTE_CATALOG_LOOKBACK_HOURS: number = 24;
 
 /*
  * Shared guards for every bespoke telemetry route in this file. These routes
@@ -197,6 +216,237 @@ router.post(
   ...requireTraceReadAccess,
   async (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
     return getAttributeValues(req, res, next, TelemetryType.Trace);
+  },
+);
+
+router.post(
+  "/telemetry/traces/service-scope-attribute-catalog",
+  ...requireTraceReadAccess,
+  async (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
+    try {
+      const databaseProps: DatabaseCommonInteractionProps =
+        await CommonAPI.getDatabaseCommonInteractionProps(req);
+
+      if (!databaseProps) {
+        return Response.sendErrorResponse(
+          req,
+          res,
+          new BadDataException("Invalid User Sesssion"),
+        );
+      }
+
+      if (!databaseProps.tenantId) {
+        return Response.sendErrorResponse(
+          req,
+          res,
+          new BadDataException("Invalid Project ID"),
+        );
+      }
+
+      const endTime: Date = req.body["endTime"]
+        ? OneUptimeDate.fromString(req.body["endTime"] as string)
+        : OneUptimeDate.getCurrentDate();
+      const startTime: Date = req.body["startTime"]
+        ? OneUptimeDate.fromString(req.body["startTime"] as string)
+        : new Date(
+            endTime.getTime() -
+              SERVICE_SCOPE_ATTRIBUTE_CATALOG_LOOKBACK_HOURS *
+                60 *
+                60 *
+                1000,
+          );
+
+      const [observedAttributeKeys, keySummaries, activeServiceCount] =
+        await Promise.all([
+          TelemetryAttributeService.fetchAttributes({
+            projectId: databaseProps.tenantId,
+            telemetryType: TelemetryType.Trace,
+          }),
+          ServiceScopeAttributeAggMV1hService.getProjectAttributeKeySummaries({
+            projectId: databaseProps.tenantId,
+            startTime,
+            endTime,
+          }),
+          ServiceScopeAttributeAggMV1hService.getProjectActiveServiceCount({
+            projectId: databaseProps.tenantId,
+            startTime,
+            endTime,
+          }),
+        ]);
+
+      const keySummaryMap: Map<string, ServiceScopeAttributeKeySummaryRow> =
+        new Map(
+          keySummaries.map(
+            (
+              summary: ServiceScopeAttributeKeySummaryRow,
+            ): [string, ServiceScopeAttributeKeySummaryRow] => {
+              return [summary.attributeKey, summary];
+            },
+          ),
+        );
+
+      const orderedAttributeKeys: Array<string> = Array.from(
+        new Set([
+          ...observedAttributeKeys,
+          ...keySummaries.map(
+            (summary: ServiceScopeAttributeKeySummaryRow): string => {
+              return summary.attributeKey;
+            },
+          ),
+        ]),
+      );
+
+      return Response.sendJsonObjectResponse(req, res, {
+        lookbackHours: SERVICE_SCOPE_ATTRIBUTE_CATALOG_LOOKBACK_HOURS,
+        defaultAttributeKeys: DEFAULT_SERVICE_SCOPE_ATTRIBUTE_KEYS,
+        activeServiceCount,
+        observedAttributes: orderedAttributeKeys.map(
+          (attributeKey: string): JSONObject => {
+            const summary: ServiceScopeAttributeKeySummaryRow | undefined =
+              keySummaryMap.get(attributeKey);
+
+            return {
+              attributeKey,
+              activeServiceCount: summary?.activeServiceCount ?? null,
+              distinctValueCount: summary?.distinctValueCount ?? null,
+              sampleCount: summary?.sampleCount ?? null,
+              lastSeenBucket: summary?.lastSeenBucket || null,
+            };
+          },
+        ),
+      });
+    } catch (err: unknown) {
+      next(err);
+    }
+  },
+);
+
+
+router.post(
+  "/telemetry/traces/service-scope-options",
+  ...requireTraceReadAccess,
+  async (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
+    try {
+      const databaseProps: DatabaseCommonInteractionProps =
+        await CommonAPI.getDatabaseCommonInteractionProps(req);
+
+      if (!databaseProps) {
+        return Response.sendErrorResponse(
+          req,
+          res,
+          new BadDataException("Invalid User Sesssion"),
+        );
+      }
+
+      if (!databaseProps.tenantId) {
+        return Response.sendErrorResponse(
+          req,
+          res,
+          new BadDataException("Invalid Project ID"),
+        );
+      }
+
+      const serviceIdRaw: unknown = req.body["serviceId"];
+      if (typeof serviceIdRaw !== "string" || !serviceIdRaw.trim()) {
+        return Response.sendErrorResponse(
+          req,
+          res,
+          new BadDataException("serviceId is required"),
+        );
+      }
+
+      const serviceId: ObjectID = new ObjectID(serviceIdRaw.trim());
+      const endTime: Date = req.body["endTime"]
+        ? OneUptimeDate.fromString(req.body["endTime"] as string)
+        : OneUptimeDate.getCurrentDate();
+      const startTime: Date = req.body["startTime"]
+        ? OneUptimeDate.fromString(req.body["startTime"] as string)
+        : new Date(endTime.getTime() - 6 * 60 * 60 * 1000);
+      const limitPerKey: number =
+        typeof req.body["limitPerKey"] === "number" &&
+        req.body["limitPerKey"] > 0
+          ? Number(req.body["limitPerKey"])
+          : 100;
+
+      const project = await ProjectService.findOneById({
+        id: databaseProps.tenantId,
+        select: {
+          indexedServiceScopeAttributes: true,
+        },
+        props: {
+          isRoot: true,
+        },
+      });
+
+      const configuredAttributeKeys: Array<string> = Array.from(
+        new Set(
+          (
+            (project?.indexedServiceScopeAttributes &&
+            project.indexedServiceScopeAttributes.length > 0
+              ? project.indexedServiceScopeAttributes
+              : DEFAULT_SERVICE_SCOPE_ATTRIBUTE_KEYS) as Array<string>
+          )
+            .map((key: string): string => {
+              return key.trim();
+            })
+            .filter((key: string): boolean => {
+              return Boolean(key);
+            }),
+        ),
+      );
+
+      const queryKeys: Array<string> = Array.from(
+        new Set(
+          configuredAttributeKeys.flatMap((configuredKey: string): Array<string> => {
+            return (
+              SERVICE_SCOPE_ATTRIBUTE_QUERY_KEY_EXPANSIONS[configuredKey] || [
+                configuredKey,
+              ]
+            );
+          }),
+        ),
+      );
+
+      const optionRows =
+        await ServiceScopeAttributeAggMV1hService.getAttributeOptionsForService({
+          projectId: databaseProps.tenantId,
+          serviceId: serviceId,
+          startTime: startTime,
+          endTime: endTime,
+          attributeKeys: queryKeys,
+          limitPerKey: limitPerKey,
+        });
+
+      const attributes: Record<string, Array<string>> = {};
+
+      for (const configuredKey of configuredAttributeKeys) {
+        attributes[configuredKey] = [];
+      }
+
+      for (const row of optionRows) {
+        for (const configuredKey of configuredAttributeKeys) {
+          const queryKeyExpansion: Array<string> =
+            SERVICE_SCOPE_ATTRIBUTE_QUERY_KEY_EXPANSIONS[configuredKey] || [
+              configuredKey,
+            ];
+
+          if (!queryKeyExpansion.includes(row.attributeKey)) {
+            continue;
+          }
+
+          if (!attributes[configuredKey]!.includes(row.attributeValue)) {
+            attributes[configuredKey]!.push(row.attributeValue);
+          }
+        }
+      }
+
+      return Response.sendJsonObjectResponse(req, res, {
+        configuredAttributeKeys,
+        attributes,
+      });
+    } catch (err: unknown) {
+      next(err);
+    }
   },
 );
 
@@ -776,6 +1026,8 @@ router.post(
     }
   },
 );
+
+
 
 // --- Trace Facets Endpoint ---
 
@@ -2044,6 +2296,29 @@ router.post(
           )
         : undefined;
 
+      const attributes: Record<string, string> | undefined =
+        body["attributes"] && typeof body["attributes"] === "object"
+          ? Object.entries(
+              body["attributes"] as Record<string, unknown>,
+            ).reduce(
+              (
+                acc: Record<string, string>,
+                [key, value]: [string, unknown],
+              ): Record<string, string> => {
+                if (
+                  key.length > 0 &&
+                  typeof value === "string" &&
+                  value.length > 0
+                ) {
+                  acc[key] = value;
+                }
+
+                return acc;
+              },
+              {},
+            )
+          : undefined;
+
       if (!profileId && !startTime) {
         return Response.sendErrorResponse(
           req,
@@ -2060,6 +2335,8 @@ router.post(
         ...(startTime !== undefined && { startTime }),
         ...(endTime !== undefined && { endTime }),
         ...(serviceIds !== undefined && { serviceIds }),
+        ...(attributes !== undefined &&
+          Object.keys(attributes).length > 0 && { attributes }),
         ...(profileType !== undefined && { profileType }),
         ...(profileTypes !== undefined &&
           profileTypes.length > 0 && { profileTypes }),

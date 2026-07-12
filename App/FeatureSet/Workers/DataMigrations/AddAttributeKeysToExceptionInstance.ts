@@ -9,9 +9,6 @@ export default class AddAttributeKeysToExceptionInstance extends DataMigrationBa
     super("AddAttributeKeysToExceptionInstance");
   }
 
-  public override runsInClusterMode(): boolean {
-    return false;
-  }
 
   public override async migrate(): Promise<void> {
     const model: ExceptionInstance = new ExceptionInstance();

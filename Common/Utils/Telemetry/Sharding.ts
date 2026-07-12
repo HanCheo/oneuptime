@@ -11,6 +11,7 @@ const shardedTelemetryTableMap: Record<string, true> = {
   [AnalyticsTableName.ProfileSample]: true,
   [AnalyticsTableName.MetricItemAggMV1m]: true,
   [AnalyticsTableName.MetricItemAggMV1mByHostV2]: true,
+  [AnalyticsTableName.ServiceScopeAttributeAggMV1h]: true,
   [AnalyticsTableName.MetricBaselineHourly]: true,
 };
 

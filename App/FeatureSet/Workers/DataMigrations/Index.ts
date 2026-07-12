@@ -213,13 +213,15 @@ const DataMigrations: Array<DataMigrationBase> = [
    */
   new RebuildMetricAggTablesMissingPrimaryEntityId(),
   /*
-   * Reclaims the `<table>_preclustered` ClickHouse backups left by a single-node
-   * -> cluster conversion (the boot schema-sync renames the legacy table aside
-   * before swapping in the Distributed wrapper). Telemetry history is forward-only
-   * across the conversion, so the abandoned backups are dropped to free their
-   * disk rather than left as a standing "un-backfilled history" warning. A clean
-   * no-op on installs that never converted. Ordered right before the conversion
-   * migration; both run after every schema migration is already in place.
+   * Cluster conversion. The boot schema-sync already swaps the app-facing
+   * analytics tables to their cluster layout; this migration makes the
+   * materialized views cluster-correct and is idempotent on re-run.
+   */
+  new ConvertAnalyticsTablesToCluster(),
+  /*
+   * Post-conversion / current-schema migrations. Keep these APPENDED after the
+   * historical cluster-cutover marker so health/status pages report the true
+   * latest build migration and existing installs can apply them monotonically.
    */
   new AddAttributeKeysToExceptionInstance(),
   new DropPreclusteredAnalyticsBackupTables(),

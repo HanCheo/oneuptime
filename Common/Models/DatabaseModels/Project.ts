@@ -2494,6 +2494,30 @@ export default class Project extends TenantModel {
     undefined;
 
   @ColumnAccessControl({
+    create: [],
+    read: [
+      Permission.ProjectOwner,
+      Permission.ProjectAdmin,
+      Permission.ProjectMember,
+      Permission.Viewer,
+      Permission.ReadProject,
+    ],
+    update: [Permission.ProjectOwner, Permission.ProjectAdmin],
+  })
+  @TableColumn({
+    type: TableColumnType.JSON,
+    required: false,
+    title: "Indexed Service Scope Attributes",
+    description:
+      "Project-scoped trace attribute keys used to power fast service scope selectors and other service-level deployment pivots.",
+  })
+  @Column({
+    type: ColumnType.JSON,
+    nullable: true,
+  })
+  public indexedServiceScopeAttributes?: Array<string> = undefined;
+
+  @ColumnAccessControl({
     create: [Permission.User],
     read: [
       Permission.ProjectOwner,

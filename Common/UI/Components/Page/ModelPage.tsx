@@ -17,6 +17,10 @@ export interface ComponentProps<TBaseModel extends BaseModel> {
   children: Array<ReactElement> | ReactElement;
   sideMenu?: undefined | ReactElement;
   className?: string | undefined;
+  isLoading?: boolean | undefined;
+  error?: string | undefined;
+  labels?: Array<Label> | undefined;
+  headerRight?: ReactElement | undefined;
   modelType: { new (): TBaseModel };
   modelId: ObjectID;
   modelNameField: string;
@@ -119,6 +123,7 @@ const ModelPage: <TBaseModel extends BaseModel>(
       isLoading={isLoading}
       error={error}
       title={title}
+      headerRight={props.headerRight}
     />
   );
 };

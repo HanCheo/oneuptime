@@ -5,6 +5,8 @@ import PageComponentProps from "../../PageComponentProps";
 import OneUptimeDate from "Common/Types/Date";
 import ObjectID from "Common/Types/ObjectID";
 import Navigation from "Common/UI/Utils/Navigation";
+import Profile from "Common/Models/AnalyticsModels/Profile";
+import Query from "Common/Types/BaseDatabase/Query";
 import React, {
   Fragment,
   FunctionComponent,
@@ -12,6 +14,11 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import { useOutletContext } from "react-router-dom";
+import {
+  getServiceTelemetryAttributeFilters,
+  ServiceTelemetryScopeContext,
+} from "./environmentScope";
 
 /** Each selectable time-range chip above the aggregate flame graph. */
 interface TimeRange {
@@ -47,6 +54,9 @@ const ServiceProfiles: FunctionComponent<
     DEFAULT_PROFILE_TYPE,
   );
 
+  const { selectedEnvironment, selectedVersion } =
+    useOutletContext<ServiceTelemetryScopeContext>();
+
   /*
    * A single memoised (startTime, endTime) pair so the flame graph
    * fetch only re-fires when the user actually picks a different
@@ -70,6 +80,24 @@ const ServiceProfiles: FunctionComponent<
   const serviceIds: Array<ObjectID> = useMemo(() => {
     return [modelId];
   }, [modelId.toString()]);
+
+  const telemetryAttributeFilters: Record<string, string> | undefined =
+    useMemo(() => {
+      return getServiceTelemetryAttributeFilters({
+        environment: selectedEnvironment,
+        version: selectedVersion,
+      });
+    }, [selectedEnvironment, selectedVersion]);
+
+  const profileQuery: Query<Profile> | undefined = useMemo(() => {
+    if (!telemetryAttributeFilters) {
+      return undefined;
+    }
+
+    return {
+      attributes: telemetryAttributeFilters,
+    };
+  }, [telemetryAttributeFilters]);
 
   return (
     <Fragment>
@@ -127,10 +155,12 @@ const ServiceProfiles: FunctionComponent<
           endTime={endTime}
           serviceIds={serviceIds}
           profileType={profileType}
+          attributeFilters={telemetryAttributeFilters}
         />
       </div>
       <ProfileTable
         modelId={modelId}
+        profileQuery={profileQuery}
         noItemsMessage="No profiles found for this service."
       />
     </Fragment>

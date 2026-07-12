@@ -19,13 +19,101 @@ import Label from "Common/Models/DatabaseModels/Label";
 import Service from "Common/Models/DatabaseModels/Service";
 import ServiceOwnerTeam from "Common/Models/DatabaseModels/ServiceOwnerTeam";
 import ServiceOwnerUser from "Common/Models/DatabaseModels/ServiceOwnerUser";
+import Query from "Common/Types/BaseDatabase/Query";
+import SortOrder from "Common/Types/BaseDatabase/SortOrder";
+import Search from "Common/Types/BaseDatabase/Search";
+import ModelAPI, { ListResult } from "Common/UI/Utils/ModelAPI/ModelAPI";
+import ObjectID from "Common/Types/ObjectID";
 import React, { Fragment, FunctionComponent, ReactElement } from "react";
 import OwnersCell from "../../Components/ResourceOwners/OwnersCell";
-import useResourceOwners from "../../Components/ResourceOwners/useResourceOwners";
+import useResourceOwners, {
+  ResourceFacet,
+  buildEnumFacetQuery,
+} from "../../Components/ResourceOwners/useResourceOwners";
+import {
+  FilterChipDropdownOption,
+  FilterOperator,
+} from "../../Components/ResourceOwners/FilterChipDropdown";
 
 const ServicesPage: FunctionComponent<
   PageComponentProps
 > = (): ReactElement => {
+  const serviceExtraFacets: Array<ResourceFacet> = [
+    {
+      key: "deploymentEnvironment",
+      label: "Environment",
+      icon: IconProp.Globe,
+      isMultiSelect: true,
+      searchPlaceholder: "Search environments...",
+      loadOptions: async (
+        projectId: ObjectID,
+        searchTerm: string,
+      ): Promise<Array<FilterChipDropdownOption>> => {
+        const query: Query<Service> = {
+          projectId: projectId,
+        } as Query<Service>;
+
+        if (searchTerm.trim()) {
+          query.deploymentEnvironment = new Search(searchTerm.trim());
+        }
+
+        const result: ListResult<Service> = await ModelAPI.getList<Service>({
+          modelType: Service,
+          query: query,
+          groupBy: {
+            deploymentEnvironment: true,
+          },
+          limit: 50,
+          skip: 0,
+          select: {
+            deploymentEnvironment: true,
+          },
+          sort: {
+            deploymentEnvironment: SortOrder.Ascending,
+          },
+        });
+
+        return result.data
+          .map((service: Service): string => {
+            return service.deploymentEnvironment?.trim() || "";
+          })
+          .filter((environment: string): boolean => {
+            return Boolean(environment);
+          })
+          .map((environment: string): FilterChipDropdownOption => {
+            return {
+              value: environment,
+              label: environment,
+            };
+          });
+      },
+      resolveOptions: async (
+        _projectId: ObjectID,
+        values: Array<string>,
+      ): Promise<Array<FilterChipDropdownOption>> => {
+        return values
+          .map((value: string): string => {
+            return value.trim();
+          })
+          .filter((value: string): boolean => {
+            return Boolean(value);
+          })
+          .map((value: string): FilterChipDropdownOption => {
+            return {
+              value: value,
+              label: value,
+            };
+          });
+      },
+      toQueryValue: (
+        values: Array<string>,
+        operator: FilterOperator,
+      ): unknown => {
+        return buildEnumFacetQuery(values, operator);
+      },
+    },
+  ];
+
   const { bulkActions: labelBulkActions, modals: labelBulkActionModals } =
     useBulkLabelActions<Service>({ modelType: Service });
 
@@ -54,6 +142,7 @@ const ServicesPage: FunctionComponent<
     ownerTeamModelType: ServiceOwnerTeam,
     resourceIdField: "primaryEntityId",
     showLabelsFacet: true,
+    extraFacets: serviceExtraFacets,
   });
 
   return (
@@ -160,6 +249,13 @@ const ServicesPage: FunctionComponent<
             },
             title: "Last Seen",
             type: FieldType.Date,
+          },
+          {
+            field: {
+              serviceVersion: true,
+            },
+            title: "Version",
+            type: FieldType.Text,
           },
         ]}
         columns={[

@@ -24,11 +24,15 @@ import React, {
   FunctionComponent,
   ReactElement,
   useEffect,
+  useMemo,
   useState,
 } from "react";
+import { withServiceTelemetryScopeRoute } from "./environmentScope";
 
 export interface ComponentProps {
   modelId: ObjectID;
+  selectedEnvironment?: string | undefined;
+  selectedVersion?: string | undefined;
 }
 
 const DashboardSideMenu: FunctionComponent<ComponentProps> = (
@@ -98,16 +102,27 @@ const DashboardSideMenu: FunctionComponent<ComponentProps> = (
     });
   }, []);
 
+  const toServiceRoute: (page: PageMap) => Route = useMemo(() => {
+    return (page: PageMap): Route => {
+      return withServiceTelemetryScopeRoute(
+        RouteUtil.populateRouteParams(RouteMap[page] as Route, {
+          modelId: props.modelId,
+        }),
+        {
+          environment: props.selectedEnvironment || "",
+          version: props.selectedVersion || "",
+        },
+      );
+    };
+  }, [props.modelId, props.selectedEnvironment, props.selectedVersion]);
+
   return (
     <SideMenu>
       <SideMenuSection title="Basic">
         <SideMenuItem
           link={{
             title: "Overview",
-            to: RouteUtil.populateRouteParams(
-              RouteMap[PageMap.SERVICE_VIEW] as Route,
-              { modelId: props.modelId },
-            ),
+            to: toServiceRoute(PageMap.SERVICE_VIEW),
           }}
           icon={IconProp.Info}
         />
@@ -115,10 +130,7 @@ const DashboardSideMenu: FunctionComponent<ComponentProps> = (
         <SideMenuItem
           link={{
             title: "Owners",
-            to: RouteUtil.populateRouteParams(
-              RouteMap[PageMap.SERVICE_VIEW_OWNERS] as Route,
-              { modelId: props.modelId },
-            ),
+            to: toServiceRoute(PageMap.SERVICE_VIEW_OWNERS),
           }}
           icon={IconProp.Team}
         />
@@ -128,10 +140,7 @@ const DashboardSideMenu: FunctionComponent<ComponentProps> = (
         <SideMenuItem
           link={{
             title: "Logs",
-            to: RouteUtil.populateRouteParams(
-              RouteMap[PageMap.SERVICE_VIEW_LOGS] as Route,
-              { modelId: props.modelId },
-            ),
+            to: toServiceRoute(PageMap.SERVICE_VIEW_LOGS),
           }}
           icon={IconProp.Logs}
         />
@@ -139,10 +148,7 @@ const DashboardSideMenu: FunctionComponent<ComponentProps> = (
         <SideMenuItem
           link={{
             title: "Traces",
-            to: RouteUtil.populateRouteParams(
-              RouteMap[PageMap.SERVICE_VIEW_TRACES] as Route,
-              { modelId: props.modelId },
-            ),
+            to: toServiceRoute(PageMap.SERVICE_VIEW_TRACES),
           }}
           icon={IconProp.Workflow}
         />
@@ -150,10 +156,7 @@ const DashboardSideMenu: FunctionComponent<ComponentProps> = (
         <SideMenuItem
           link={{
             title: "Metrics",
-            to: RouteUtil.populateRouteParams(
-              RouteMap[PageMap.SERVICE_VIEW_METRICS] as Route,
-              { modelId: props.modelId },
-            ),
+            to: toServiceRoute(PageMap.SERVICE_VIEW_METRICS),
           }}
           icon={IconProp.Graph}
         />
@@ -161,10 +164,7 @@ const DashboardSideMenu: FunctionComponent<ComponentProps> = (
         <SideMenuItem
           link={{
             title: "Performance Profiles",
-            to: RouteUtil.populateRouteParams(
-              RouteMap[PageMap.SERVICE_VIEW_PROFILES] as Route,
-              { modelId: props.modelId },
-            ),
+            to: toServiceRoute(PageMap.SERVICE_VIEW_PROFILES),
           }}
           icon={IconProp.Fire}
         />
@@ -172,10 +172,7 @@ const DashboardSideMenu: FunctionComponent<ComponentProps> = (
         <SideMenuItem
           link={{
             title: "Exceptions",
-            to: RouteUtil.populateRouteParams(
-              RouteMap[PageMap.SERVICE_VIEW_EXCEPTIONS] as Route,
-              { modelId: props.modelId },
-            ),
+            to: toServiceRoute(PageMap.SERVICE_VIEW_EXCEPTIONS),
           }}
           icon={IconProp.Error}
         />
@@ -185,10 +182,7 @@ const DashboardSideMenu: FunctionComponent<ComponentProps> = (
         <CountModelSideMenuItem<Incident>
           link={{
             title: "Incidents",
-            to: RouteUtil.populateRouteParams(
-              RouteMap[PageMap.SERVICE_VIEW_INCIDENTS] as Route,
-              { modelId: props.modelId },
-            ),
+            to: toServiceRoute(PageMap.SERVICE_VIEW_INCIDENTS),
           }}
           icon={IconProp.Alert}
           badgeType={BadgeType.DANGER}
@@ -206,10 +200,7 @@ const DashboardSideMenu: FunctionComponent<ComponentProps> = (
         <CountModelSideMenuItem<Alert>
           link={{
             title: "Alerts",
-            to: RouteUtil.populateRouteParams(
-              RouteMap[PageMap.SERVICE_VIEW_ALERTS] as Route,
-              { modelId: props.modelId },
-            ),
+            to: toServiceRoute(PageMap.SERVICE_VIEW_ALERTS),
           }}
           icon={IconProp.ExclaimationCircle}
           badgeType={BadgeType.DANGER}
@@ -227,10 +218,7 @@ const DashboardSideMenu: FunctionComponent<ComponentProps> = (
         <CountModelSideMenuItem<ScheduledMaintenance>
           link={{
             title: "Scheduled Maintenance",
-            to: RouteUtil.populateRouteParams(
-              RouteMap[PageMap.SERVICE_VIEW_SCHEDULED_MAINTENANCE] as Route,
-              { modelId: props.modelId },
-            ),
+            to: toServiceRoute(PageMap.SERVICE_VIEW_SCHEDULED_MAINTENANCE),
           }}
           icon={IconProp.Clock}
           badgeType={BadgeType.WARNING}
@@ -252,31 +240,29 @@ const DashboardSideMenu: FunctionComponent<ComponentProps> = (
       <SideMenuSection title="Advanced">
         <SideMenuItem
           link={{
+            title: "Code Repositories",
+            to: toServiceRoute(PageMap.SERVICE_VIEW_CODE_REPOSITORIES),
+          }}
+          icon={IconProp.Code}
+        />
+        <SideMenuItem
+          link={{
             title: "Settings",
-            to: RouteUtil.populateRouteParams(
-              RouteMap[PageMap.SERVICE_VIEW_SETTINGS] as Route,
-              { modelId: props.modelId },
-            ),
+            to: toServiceRoute(PageMap.SERVICE_VIEW_SETTINGS),
           }}
           icon={IconProp.Settings}
         />
         <SideMenuItem
           link={{
             title: "Audit Logs",
-            to: RouteUtil.populateRouteParams(
-              RouteMap[PageMap.SERVICE_VIEW_AUDIT_LOGS] as Route,
-              { modelId: props.modelId },
-            ),
+            to: toServiceRoute(PageMap.SERVICE_VIEW_AUDIT_LOGS),
           }}
           icon={IconProp.List}
         />
         <SideMenuItem
           link={{
             title: "Delete Service",
-            to: RouteUtil.populateRouteParams(
-              RouteMap[PageMap.SERVICE_VIEW_DELETE] as Route,
-              { modelId: props.modelId },
-            ),
+            to: toServiceRoute(PageMap.SERVICE_VIEW_DELETE),
           }}
           icon={IconProp.Trash}
           className="danger-on-hover"

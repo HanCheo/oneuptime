@@ -2,24 +2,20 @@ import MetricsViewer from "../../../Components/Metrics/MetricsViewer";
 import PageComponentProps from "../../PageComponentProps";
 import ObjectID from "Common/Types/ObjectID";
 import Navigation from "Common/UI/Utils/Navigation";
-import Service from "Common/Models/DatabaseModels/Service";
-import ModelAPI from "Common/UI/Utils/ModelAPI/ModelAPI";
-import API from "Common/UI/Utils/API/API";
-import PageLoader from "Common/UI/Components/Loader/PageLoader";
-import ErrorMessage from "Common/UI/Components/ErrorMessage/ErrorMessage";
-import { PromiseVoidFunction } from "Common/Types/FunctionTypes";
-import React, {
-  Fragment,
-  FunctionComponent,
-  ReactElement,
-  useEffect,
-  useState,
-} from "react";
+import React, { Fragment, FunctionComponent, ReactElement } from "react";
+import { useOutletContext } from "react-router-dom";
+import {
+  getServiceTelemetryAttributeFilterDisplayKeys,
+  getServiceTelemetryAttributeFilters,
+  ServiceTelemetryScopeContext,
+} from "./environmentScope";
 
 const ServiceMetrics: FunctionComponent<
   PageComponentProps
 > = (): ReactElement => {
   const modelId: ObjectID = Navigation.getLastParamAsObjectID(1);
+  const { selectedEnvironment, selectedVersion } =
+    useOutletContext<ServiceTelemetryScopeContext>();
 
   const [serviceName, setServiceName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -75,24 +71,19 @@ const ServiceMetrics: FunctionComponent<
 
   return (
     <Fragment>
-      {/*
-       * Scope by the OTel `service.name` resource attribute (stored as
-       * `resource.service.name` at ingest), consistent with how the Host
-       * (`resource.host.name`), Kubernetes (`resource.k8s.cluster.name`),
-       * Podman, etc. metric views scope by their own resource attribute. This
-       * single filter drives the metric-name list, the per-row sparklines, the
-       * read-only "Service" chip, and — via row-click propagation — the metric
-       * detail chart. `Service.name` is the value the service reports as
-       * `service.name`.
-       */}
       <MetricsViewer
-        attributeFilters={{
-          "resource.service.name": serviceName,
-        }}
-        attributeFilterDisplayKeys={{
-          "resource.service.name": "Service",
-        }}
+        serviceIds={[modelId]}
         serviceIdsToDisplay={[modelId]}
+        attributeFilters={getServiceTelemetryAttributeFilters({
+          environment: selectedEnvironment,
+          version: selectedVersion,
+        })}
+        attributeFilterDisplayKeys={getServiceTelemetryAttributeFilterDisplayKeys(
+          {
+            environment: selectedEnvironment,
+            version: selectedVersion,
+          },
+        )}
       />
     </Fragment>
   );

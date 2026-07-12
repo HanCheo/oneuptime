@@ -29,6 +29,7 @@ export interface FlamegraphRequest {
   startTime?: Date;
   endTime?: Date;
   serviceIds?: Array<ObjectID>;
+  attributes?: Record<string, string>;
   /**
    * Single profile type to filter on. Kept for backwards compat. When
    * `profileTypes` is also supplied, `profileTypes` wins.
@@ -1436,7 +1437,7 @@ export class ProfileAggregationService {
     statement: Statement,
     request: Pick<
       FlamegraphRequest,
-      "serviceIds" | "profileType" | "profileTypes"
+      "serviceIds" | "attributes" | "profileType" | "profileTypes"
     >,
   ): void {
     if (request.serviceIds && request.serviceIds.length > 0) {
@@ -1450,6 +1451,24 @@ export class ProfileAggregationService {
           ),
         }})`,
       );
+    }
+
+    if (request.attributes) {
+      for (const [key, value] of Object.entries(request.attributes)) {
+        if (!key || typeof value !== "string" || value.length === 0) {
+          continue;
+        }
+
+        statement.append(
+          SQL` AND attributes[${{
+            type: TableColumnType.Text,
+            value: key,
+          }}] = ${{
+            type: TableColumnType.Text,
+            value: value,
+          }}`,
+        );
+      }
     }
 
     /*

@@ -1525,6 +1525,8 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
         "resource.k8s.pod.name": "Pod",
         "resource.k8s.container.name": "Container",
         "resource.k8s.namespace.name": "Namespace",
+        "resource.deployment.environment": "Environment",
+        "resource.service.version": "Version",
       };
 
       for (const [attrKey, attrValue] of Object.entries(logQueryAttributes)) {

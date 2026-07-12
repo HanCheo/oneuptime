@@ -37,6 +37,7 @@ import {
   getStorageTableName,
   onClusterClause,
 } from "../Utils/AnalyticsDatabase/ClusterConfig";
+import { getClickhouseClusterName } from "../../Utils/Telemetry/Sharding";
 import logger, { LogAttributes } from "../Utils/Logger";
 import Realtime from "../Utils/Realtime";
 import StreamUtil from "../Utils/Stream";
@@ -226,9 +227,10 @@ export default class AnalyticsDatabaseService<
     });
   }
   private getMutationOnClusterClause(): string {
-    return this.model.isDistributedTableEnabled() &&
-      this.model.distributedClusterName
-      ? ` ON CLUSTER ${this.model.distributedClusterName}`
+    const clusterName: string | undefined =
+      this.model.distributedClusterName || getClickhouseClusterName();
+    return this.model.isDistributedTableEnabled() && clusterName
+      ? ` ON CLUSTER ${clusterName}`
       : "";
   }
 
@@ -553,8 +555,10 @@ export default class AnalyticsDatabaseService<
     if (indexStatement) {
       await this.execute(indexStatement, MigrationExecuteOptions);
     }
-    if (this.model.distributedTableName) {
+    if (this.model.isDistributedTableEnabled()) {
       await this.addColumnToTable(this.model.getSchemaTableName(), column);
+    }
+    if (this.model.distributedTableName) {
       await this.addColumnToDistributedTable(column);
     }
   }
@@ -581,6 +585,13 @@ export default class AnalyticsDatabaseService<
       this.statementGenerator.toDropColumnStatement(columnName),
       MigrationExecuteOptions,
     );
+    if (this.model.isDistributedTableEnabled()) {
+      const databaseName: string =
+        this.database.getDatasourceOptions().database!;
+      await this.execute(
+        `ALTER TABLE ${databaseName}.${this.model.getSchemaTableName()}${this.getMutationOnClusterClause()} DROP COLUMN IF EXISTS ${columnName}`,
+      );
+    }
     if (this.model.distributedTableName) {
       const databaseName: string =
         this.database.getDatasourceOptions().database!;

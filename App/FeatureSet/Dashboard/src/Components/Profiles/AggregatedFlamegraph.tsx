@@ -27,6 +27,7 @@ export interface AggregatedFlamegraphProps {
   startTime: Date;
   endTime: Date;
   serviceIds?: Array<ObjectID> | undefined;
+  attributeFilters?: Record<string, string> | undefined;
   profileType?: string | undefined;
   unit?: string | undefined;
   compact?: boolean | undefined;
@@ -105,6 +106,7 @@ const AggregatedFlamegraph: FunctionComponent<AggregatedFlamegraphProps> = (
             serviceIds: props.serviceIds?.map((id: ObjectID) => {
               return id.toString();
             }),
+            attributes: props.attributeFilters,
             profileTypes: queryProfileTypes,
           },
           headers: {
@@ -147,6 +149,7 @@ const AggregatedFlamegraph: FunctionComponent<AggregatedFlamegraphProps> = (
     props.startTime.getTime(),
     props.endTime.getTime(),
     props.profileType,
+    JSON.stringify(props.attributeFilters || {}),
     // serviceIds intentionally re-joined to compare by value
     (props.serviceIds || [])
       .map((i: ObjectID) => {

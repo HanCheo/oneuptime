@@ -542,11 +542,13 @@ export const probeRuntimeCharts: (data: {
   primaryEntityId: ObjectID;
   start: Date;
   end: Date;
+  extraAttributes?: Record<string, string> | undefined;
 }) => Promise<Array<ProbedRuntimeChart>> = async (data: {
   language: ServiceLanguage | null;
   primaryEntityId: ObjectID;
   start: Date;
   end: Date;
+  extraAttributes?: Record<string, string> | undefined;
 }): Promise<Array<ProbedRuntimeChart>> => {
   const defs: Array<RuntimeChartDef> = getRuntimeChartDefs(data.language);
 
@@ -558,7 +560,10 @@ export const probeRuntimeCharts: (data: {
           const raw: Array<TimePoint> = await fetchMetricSeries(
             {
               name: candidate.metricName,
-              attributes: candidate.attributes,
+              attributes: {
+                ...(data.extraAttributes || {}),
+                ...(candidate.attributes || {}),
+              },
               primaryEntityId: data.primaryEntityId,
               aggregationType: def.aggregationType,
               start: data.start,

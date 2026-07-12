@@ -28,8 +28,10 @@ import React, {
   FunctionComponent,
   ReactElement,
   useEffect,
+  useMemo,
   useState,
 } from "react";
+import { useOutletContext } from "react-router-dom";
 import TechStackView from "../../../Components/TechStack/TechStackView";
 import PageMap from "../../../Utils/PageMap";
 import RouteMap, { RouteUtil } from "../../../Utils/RouteMap";
@@ -60,6 +62,13 @@ import {
   SERVICE_LANGUAGE_DISPLAY_NAMES,
   ServiceLanguage,
 } from "../../../Components/TelemetryResource/serviceGoldenMetrics";
+import {
+  getServiceTelemetryAttributeFilters,
+  normalizeServiceEnvironment,
+  normalizeServiceVersion,
+  ServiceTelemetryScopeContext,
+  withServiceTelemetryScopeRoute,
+} from "./environmentScope";
 
 const DEFAULT_RANGE: RangeStartAndEndDateTime = {
   range: TimeRange.PAST_ONE_HOUR,
@@ -99,6 +108,15 @@ const ServiceView: FunctionComponent<PageComponentProps> = (): ReactElement => {
   } | null>(null);
   const [timeRange, setTimeRange] =
     useState<RangeStartAndEndDateTime>(DEFAULT_RANGE);
+  const { selectedEnvironment, selectedVersion } =
+    useOutletContext<ServiceTelemetryScopeContext>();
+  const telemetryAttributeFilters: Record<string, string> | undefined =
+    useMemo(() => {
+      return getServiceTelemetryAttributeFilters({
+        environment: selectedEnvironment,
+        version: selectedVersion,
+      });
+    }, [selectedEnvironment, selectedVersion]);
 
   /*
    * showLoader=false refetches in place (used after an inline edit) so the
@@ -122,8 +140,6 @@ const ServiceView: FunctionComponent<PageComponentProps> = (): ReactElement => {
           description: true,
           techStack: true,
           lastSeenAt: true,
-          serviceVersion: true,
-          deploymentEnvironment: true,
           serviceNamespace: true,
           runtimeName: true,
           runtimeVersion: true,
@@ -192,8 +208,19 @@ const ServiceView: FunctionComponent<PageComponentProps> = (): ReactElement => {
      */
     let ignore: boolean = false;
     Promise.all([
-      fetchSpanMetrics({ primaryEntityId: modelId, start, end }),
-      probeRuntimeCharts({ language, primaryEntityId: modelId, start, end }),
+      fetchSpanMetrics({
+        primaryEntityId: modelId,
+        start,
+        end,
+        attributes: telemetryAttributeFilters,
+      }),
+      probeRuntimeCharts({
+        language,
+        primaryEntityId: modelId,
+        start,
+        end,
+        extraAttributes: telemetryAttributeFilters,
+      }),
     ])
       .then(([m, runtime]: [SpanMetrics, Array<ProbedRuntimeChart>]) => {
         if (ignore) {
@@ -213,7 +240,7 @@ const ServiceView: FunctionComponent<PageComponentProps> = (): ReactElement => {
     return () => {
       ignore = true;
     };
-  }, [service, timeRange]);
+  }, [service, timeRange, telemetryAttributeFilters]);
 
   const { autoRefreshInterval, setAutoRefreshInterval } = useAutoRefresh({
     storageKey: "service-overview-auto-refresh-interval",
@@ -257,6 +284,24 @@ const ServiceView: FunctionComponent<PageComponentProps> = (): ReactElement => {
       : "disconnected";
 
   const chips: Array<ResourceOverviewChip> = [];
+  const normalizedEnvironment: string =
+    normalizeServiceEnvironment(selectedEnvironment);
+  const normalizedVersion: string = normalizeServiceVersion(selectedVersion);
+
+  if (normalizedEnvironment) {
+    chips.push({
+      icon: IconProp.Globe,
+      label: `Environment: ${normalizedEnvironment}`,
+    });
+  }
+
+  if (normalizedVersion) {
+    chips.push({
+      icon: IconProp.Tag,
+      label: `Version: ${normalizedVersion}`,
+    });
+  }
+
   if (languageDisplay) {
     chips.push({ icon: IconProp.Code, label: languageDisplay });
   }
@@ -266,13 +311,10 @@ const ServiceView: FunctionComponent<PageComponentProps> = (): ReactElement => {
       label: [r.runtimeName, r.runtimeVersion].filter(Boolean).join(" "),
     });
   }
-  if (r.serviceVersion) {
-    chips.push({ icon: IconProp.Tag, label: String(r.serviceVersion) });
-  }
-  if (r.deploymentEnvironment) {
+  if (r.cloudProvider) {
     chips.push({
-      icon: IconProp.Globe,
-      label: String(r.deploymentEnvironment),
+      icon: IconProp.Cloud,
+      label: [r.cloudProvider, r.cloudRegion].filter(Boolean).join(" "),
     });
   }
   if (r.cloudProvider) {
@@ -283,7 +325,13 @@ const ServiceView: FunctionComponent<PageComponentProps> = (): ReactElement => {
   }
 
   const populate: (page: PageMap) => Route = (page: PageMap): Route => {
-    return RouteUtil.populateRouteParams(RouteMap[page] as Route, { modelId });
+    return withServiceTelemetryScopeRoute(
+      RouteUtil.populateRouteParams(RouteMap[page] as Route, { modelId }),
+      {
+        environment: selectedEnvironment,
+        version: selectedVersion,
+      },
+    );
   };
 
   const tiles: Array<ResourceOverviewTile> = [
@@ -470,8 +518,6 @@ const ServiceView: FunctionComponent<PageComponentProps> = (): ReactElement => {
         [r.runtimeName, r.runtimeVersion].filter(Boolean).join(" ") ||
         undefined,
     },
-    { label: "Service Version", value: r.serviceVersion },
-    { label: "Deployment Environment", value: r.deploymentEnvironment },
     { label: "Service Namespace", value: r.serviceNamespace },
     { label: "Cloud Provider", value: r.cloudProvider },
     { label: "Cloud Platform", value: r.cloudPlatform },

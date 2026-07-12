@@ -278,3 +278,33 @@ describe("ProfileAggregationService.mergeDiffTrees", () => {
     expect(removed.deltaPercent).toBe(-100);
   });
 });
+
+describe("ProfileAggregationService profile attribute filters", () => {
+  test("adds attribute equality filters to flamegraph/profile queries", () => {
+    const buildWindowTotalQuery: (request: {
+      projectId: ObjectID;
+      attributes?: Record<string, string>;
+    }) => { query: string; query_params: Record<string, unknown> } = (
+      ProfileAggregationService as unknown as {
+        buildWindowTotalQuery: (request: {
+          projectId: ObjectID;
+          attributes?: Record<string, string>;
+        }) => { query: string; query_params: Record<string, unknown> };
+      }
+    ).buildWindowTotalQuery.bind(ProfileAggregationService);
+
+    const statement: { query: string; query_params: Record<string, unknown> } =
+      buildWindowTotalQuery({
+        projectId: ObjectID.generate(),
+        attributes: {
+          "resource.deployment.environment": "production",
+        },
+      });
+
+    expect(statement.query).toContain("AND attributes[");
+    expect(Object.values(statement.query_params)).toContain(
+      "resource.deployment.environment",
+    );
+    expect(Object.values(statement.query_params)).toContain("production");
+  });
+});

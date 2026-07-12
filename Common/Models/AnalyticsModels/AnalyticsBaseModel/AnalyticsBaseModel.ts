@@ -18,15 +18,16 @@ import Dictionary from "../../../Types/Dictionary";
 import BadDataException from "../../../Types/Exception/BadDataException";
 import { JSONValue } from "../../../Types/JSON";
 import ObjectID from "../../../Types/ObjectID";
+import Text from "../../../Types/Text";
 import Permission, {
   UserTenantAccessPermission,
 } from "../../../Types/Permission";
-import Text from "../../../Types/Text";
-import CommonModel from "./CommonModel";
 import {
   getClickhouseClusterName,
   getClickhouseTelemetryShardingKey,
+  isClickhouseTelemetryTableSharded,
 } from "../../../Utils/Telemetry/Sharding";
+import CommonModel from "./CommonModel";
 
 export type AnalyticsBaseModelType = { new (): AnalyticsBaseModel };
 
@@ -448,9 +449,10 @@ export default class AnalyticsBaseModel extends CommonModel {
 
   public isDistributedTableEnabled(): boolean {
     return Boolean(
-      this.distributedTableName &&
-        this.distributedClusterName &&
-        this.distributedShardingKey,
+      isClickhouseTelemetryTableSharded(this.tableName) ||
+        (this.distributedTableName &&
+          (this.distributedClusterName || getClickhouseClusterName()) &&
+          (this.distributedShardingKey || this.shardingKey)),
     );
   }
 
