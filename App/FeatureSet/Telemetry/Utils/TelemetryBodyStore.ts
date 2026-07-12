@@ -51,17 +51,54 @@ const TTL_SECONDS: number = 60 * 60;
 
 export default class TelemetryBodyStore {
   /*
+   * BullMQ producers/consumers do NOT share this singleton Redis client —
+   * Queue / QueueWorker construct their own ioredis connections from
+   * Redis.getRedisOptions(). That means a telemetry worker can be actively
+   * draining jobs while this singleton is still reconnecting. Do not hard-fail
+   * on Redis.isConnected() here; if the client object exists, let ioredis
+   * carry the command through its reconnect / offline-queue path. For the
+   * idle lazy-connect states, kick connect() once so the command does not
+   * fail immediately with "Connection is closed".
+   */
+  private static async getCommandClient(
+    action: "store" | "read",
+  ): Promise<ClientType> {
+    const client: ClientType | null = Redis.getClient();
+    if (!client) {
+      throw new Error(`Redis not connected; cannot ${action} telemetry body`);
+    }
+
+    const shouldConnect: boolean =
+      client.status === "wait" ||
+      client.status === "end" ||
+      client.status === "close";
+
+    if (shouldConnect) {
+      try {
+        await client.connect();
+      } catch (error) {
+        const isRecovering: boolean =
+          client.status === "ready" ||
+          client.status === "connecting" ||
+          client.status === "reconnecting";
+
+        if (!isRecovering) {
+          throw error;
+        }
+      }
+    }
+
+    return client;
+  }
+
+  /*
    * Persist a raw payload buffer and return the lookup key that
    * should be carried in the BullMQ job data. Throws if Redis is
    * unavailable — callers (the HTTP enqueue path) propagate that
    * as a 5xx, which is correct: we can't ingest without storage.
    */
   public static async storeBody(buffer: Buffer): Promise<string> {
-    const client: ClientType | null = Redis.getClient();
-    if (!client || !Redis.isConnected()) {
-      throw new Error("Redis not connected; cannot store telemetry body");
-    }
-
+    const client: ClientType = await this.getCommandClient("store");
     const key: string = `${KEY_PREFIX}${ObjectID.generate().toString()}`;
 
     /*
@@ -91,11 +128,7 @@ export default class TelemetryBodyStore {
    * backstop for jobs that are dropped or exhaust their retries.
    */
   public static async readBody(key: string): Promise<Buffer | null> {
-    const client: ClientType | null = Redis.getClient();
-    if (!client || !Redis.isConnected()) {
-      throw new Error("Redis not connected; cannot read telemetry body");
-    }
-
+    const client: ClientType = await this.getCommandClient("read");
     const buffer: Buffer | null = await client.getBuffer(key);
 
     if (!buffer) {
@@ -117,7 +150,7 @@ export default class TelemetryBodyStore {
    */
   public static async deleteBody(key: string): Promise<void> {
     const client: ClientType | null = Redis.getClient();
-    if (!client || !Redis.isConnected()) {
+    if (!client) {
       return;
     }
 

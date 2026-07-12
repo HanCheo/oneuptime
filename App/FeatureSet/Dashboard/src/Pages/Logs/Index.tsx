@@ -2,7 +2,6 @@ import PageComponentProps from "../PageComponentProps";
 import ErrorMessage from "Common/UI/Components/ErrorMessage/ErrorMessage";
 import React, { FunctionComponent, ReactElement } from "react";
 import DashboardLogsViewer from "../../Components/Logs/LogsViewer";
-
 const LogsPage: FunctionComponent<PageComponentProps> = (
   props: PageComponentProps,
 ): ReactElement => {

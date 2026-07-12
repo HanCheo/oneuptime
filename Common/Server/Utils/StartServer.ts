@@ -358,6 +358,11 @@ const init: InitFunction = async (
             return;
           }
 
+          variables = {
+            frontendCacheKey: AppVersion.toString(),
+            ...variables,
+          };
+
           return res.render(path.resolve(process.cwd(), "views/index.ejs"), {
             enableGoogleTagManager: IsBillingEnabled || false,
             ...variables,

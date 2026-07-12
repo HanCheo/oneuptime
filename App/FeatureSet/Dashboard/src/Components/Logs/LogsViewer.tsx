@@ -1,5 +1,5 @@
-import Includes from "Common/Types/BaseDatabase/Includes";
 import SortOrder from "Common/Types/BaseDatabase/SortOrder";
+import Includes from "Common/Types/BaseDatabase/Includes";
 import ObjectID from "Common/Types/ObjectID";
 import ErrorMessage from "Common/UI/Components/ErrorMessage/ErrorMessage";
 import LogsViewer, {
@@ -58,6 +58,10 @@ import RangeStartAndEndDateTime, {
   RangeStartAndEndDateTimeUtil,
 } from "Common/Types/Time/RangeStartAndEndDateTime";
 import TimeRange from "Common/Types/Time/TimeRange";
+import {
+  applyFacetFiltersToLogQuery,
+  applyFacetFiltersToLogsAggregationRequest,
+} from "./FacetFilterUtils";
 import InBetween from "Common/Types/BaseDatabase/InBetween";
 
 export interface ComponentProps {
@@ -96,7 +100,7 @@ export interface ComponentProps {
 }
 
 const DEFAULT_PAGE_SIZE: number = 100;
-const LIVE_POLL_INTERVAL_MS: number = 10000;
+const LIVE_POLL_INTERVAL_MS: number = 3000;
 const SAVED_VIEWS_LIMIT: number = 100;
 const FACET_FILTER_KEYS: Array<string> = [
   "severityText",
@@ -302,78 +306,34 @@ function buildBaseQuery(props: ComponentProps): Query<Log> {
   return query;
 }
 
-/*
- * Fold user-applied facet selections into a list query. Mutates and returns
- * `query`. Shared between rebuildFilterOptionsFromFacets (facet clicks /
- * chip removal) and the URL-seeded initial filterOptions so deep links
- * (?filters=...) scope the logs list exactly like interactive selections.
- */
-function applyFacetFiltersToQuery(
-  query: Query<Log>,
-  facets: Map<string, Set<string>>,
+function buildLogFilterOptionsFromBaseQuery(
+  baseQuery: Query<Log>,
+  timeRange: RangeStartAndEndDateTime,
+  appliedFacetFilters: Map<string, Set<string>>,
 ): Query<Log> {
-  /*
-   * primaryEntityId, hostId, dockerHostId and kubernetesClusterId facets
-   * all filter the same underlying `primaryEntityId` column — the
-   * discriminator only matters at facet computation time. Coalesce
-   * any selected values across these facets into a single
-   * `primaryEntityId IN (...)` predicate.
-   */
-  const resourceIds: Set<string> = new Set<string>();
-  const resourceFacetKeys: Set<string> = new Set<string>([
-    "primaryEntityId",
-    "hostId",
-    "dockerHostId",
-    "podmanHostId",
-    "kubernetesClusterId",
-  ]);
+  const base: Query<Log> = {
+    ...(baseQuery as unknown as JSONObject),
+  } as Query<Log>;
+  const dateRange: InBetween<Date> =
+    RangeStartAndEndDateTimeUtil.getStartAndEndDate(timeRange);
+  (base as any).time = new InBetween<Date>(
+    dateRange.startValue,
+    dateRange.endValue,
+  );
 
-  for (const [key, values] of facets.entries()) {
-    if (values.size === 0) {
-      continue;
-    }
+  return applyFacetFiltersToLogQuery(base, appliedFacetFilters);
+}
 
-    if (resourceFacetKeys.has(key)) {
-      for (const value of values) {
-        resourceIds.add(value);
-      }
-      continue;
-    }
-
-    /*
-     * Keys prefixed with `attributes.` are telemetry attribute filters,
-     * which live under `query.attributes[<suffix>]` rather than as
-     * top-level columns.
-     */
-    if (key.startsWith("attributes.")) {
-      const attrKey: string = key.substring("attributes.".length);
-      const existing: Record<string, unknown> =
-        ((query as any).attributes as Record<string, unknown>) || {};
-      existing[attrKey] =
-        values.size === 1
-          ? Array.from(values)[0]!
-          : new Includes(Array.from(values));
-      (query as any).attributes = existing;
-      continue;
-    }
-
-    if (values.size === 1) {
-      // Single value: use direct equality
-      const singleValue: string = Array.from(values)[0]!;
-      (query as any)[key] = singleValue;
-    } else {
-      // Multiple values: use Includes
-      (query as any)[key] = new Includes(Array.from(values));
-    }
-  }
-
-  if (resourceIds.size === 1) {
-    (query as any).primaryEntityId = Array.from(resourceIds)[0]!;
-  } else if (resourceIds.size > 1) {
-    (query as any).primaryEntityId = new Includes(Array.from(resourceIds));
-  }
-
-  return query;
+export function buildLogFilterOptions(
+  props: ComponentProps,
+  timeRange: RangeStartAndEndDateTime,
+  appliedFacetFilters: Map<string, Set<string>>,
+): Query<Log> {
+  return buildLogFilterOptionsFromBaseQuery(
+    buildBaseQuery(props),
+    timeRange,
+    appliedFacetFilters,
+  );
 }
 
 function getApiUrl(path: string): URL {
@@ -425,24 +385,15 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
   const [error, setError] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [filterOptions, setFilterOptions] = useState<Query<Log>>(() => {
-    const base: Query<Log> = buildBaseQuery(props);
     const initialRange: RangeStartAndEndDateTime =
       initialUrlState?.timeRange || { range: TimeRange.PAST_ONE_HOUR };
-    const defaultRange: InBetween<Date> =
-      RangeStartAndEndDateTimeUtil.getStartAndEndDate(initialRange);
-    (base as any).time = new InBetween<Date>(
-      defaultRange.startValue,
-      defaultRange.endValue,
+
+    return buildLogFilterOptions(
+      props,
+      initialRange,
+      initialUrlState?.facetFilters || new Map(),
     );
-    /*
-     * URL-seeded facet filters (?filters=...) must scope the initial logs
-     * list query, not just the chips/histogram — apply them through the
-     * same logic facet clicks use.
-     */
-    if (initialUrlState && initialUrlState.facetFilters.size > 0) {
-      applyFacetFiltersToQuery(base, initialUrlState.facetFilters);
-    }
-    return base;
+
   });
   const [page, setPage] = useState<number>(initialUrlState?.page || 1);
   const [pageSize, setPageSize] = useState<number>(
@@ -452,7 +403,6 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
   const [sortField, setSortField] = useState<LogsSortField>("time");
   const [sortOrder, setSortOrder] = useState<SortOrder>(SortOrder.Descending);
   const [isLiveEnabled, setIsLiveEnabled] = useState<boolean>(false);
-  const [isLiveUpdating, setIsLiveUpdating] = useState<boolean>(false);
   const [savedViews, setSavedViews] = useState<Array<LogSavedView>>([]);
   const [selectedSavedViewId, setSelectedSavedViewId] = useState<string | null>(
     null,
@@ -473,6 +423,7 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
 
   const liveRequestInFlight: React.MutableRefObject<boolean> =
     useRef<boolean>(false);
+  const listRequestSequence: React.MutableRefObject<number> = useRef<number>(0);
   const hasAppliedInitialSavedView: React.MutableRefObject<boolean> =
     useRef<boolean>(false);
 
@@ -481,6 +432,8 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
     Array<HistogramBucket>
   >([]);
   const [histogramLoading, setHistogramLoading] = useState<boolean>(false);
+  const [hasLoadedInitialItems, setHasLoadedInitialItems] =
+    useState<boolean>(false);
 
   // Facet state
   const [facetData, setFacetData] = useState<FacetData>({});
@@ -521,28 +474,60 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
       ),
     );
 
+  // Extract service IDs for API calls
+  const serviceIdStrings: Array<string> | undefined = useMemo(() => {
+    if (!props.serviceIds || props.serviceIds.length === 0) {
+      return undefined;
+    }
+
+    return props.serviceIds.map((id: ObjectID) => {
+      return id.toString();
+    });
+  }, [props.serviceIds]);
+
+  /*
+   * Extract trace/span IDs for API calls (histogram + facets must respect these
+   * base filters so they reflect the same scope as the logs list)
+   */
+  const traceIdStrings: Array<string> | undefined = useMemo(() => {
+    if (!props.traceIds || props.traceIds.length === 0) {
+      return undefined;
+    }
+
+    return [...props.traceIds];
+  }, [props.traceIds]);
+
+  const spanIdStrings: Array<string> | undefined = useMemo(() => {
+    if (!props.spanIds || props.spanIds.length === 0) {
+      return undefined;
+    }
+
+    return [...props.spanIds];
+  }, [props.spanIds]);
+
+  const baseLogQuery: Query<Log> = useMemo(() => {
+    return buildBaseQuery(props);
+  }, [
+    props.entityScope,
+    props.logQuery,
+    serviceIdStrings,
+    spanIdStrings,
+    traceIdStrings,
+  ]);
   useEffect(() => {
     if (skipInitialFilterReset.current) {
       skipInitialFilterReset.current = false;
       return;
     }
-    const base: Query<Log> = buildBaseQuery(props);
-    const dateRange: InBetween<Date> =
-      RangeStartAndEndDateTimeUtil.getStartAndEndDate(timeRange);
-    (base as any).time = new InBetween<Date>(
-      dateRange.startValue,
-      dateRange.endValue,
+    setFilterOptions(
+      buildLogFilterOptionsFromBaseQuery(
+        baseLogQuery,
+        timeRange,
+        appliedFacetFilters,
+      ),
     );
-    setFilterOptions(base);
     setPage(1);
-  }, [
-    props.serviceIds,
-    props.traceIds,
-    props.spanIds,
-    props.logQuery,
-    props.entityScope,
-  ]);
-
+  }, [appliedFacetFilters, baseLogQuery, timeRange]);
   /*
    * Mirror time range / chip filters / page / pageSize to the URL so refresh
    * and back-from-log-detail restore the view. `replaceState` keeps history
@@ -607,37 +592,6 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
       attributes: true,
     };
   }, []);
-
-  // Extract service IDs for API calls
-  const serviceIdStrings: Array<string> | undefined = useMemo(() => {
-    if (!props.serviceIds || props.serviceIds.length === 0) {
-      return undefined;
-    }
-
-    return props.serviceIds.map((id: ObjectID) => {
-      return id.toString();
-    });
-  }, [props.serviceIds]);
-
-  /*
-   * Extract trace/span IDs for API calls (histogram + facets must respect these
-   * base filters so they reflect the same scope as the logs list)
-   */
-  const traceIdStrings: Array<string> | undefined = useMemo(() => {
-    if (!props.traceIds || props.traceIds.length === 0) {
-      return undefined;
-    }
-
-    return [...props.traceIds];
-  }, [props.traceIds]);
-
-  const spanIdStrings: Array<string> | undefined = useMemo(() => {
-    if (!props.spanIds || props.spanIds.length === 0) {
-      return undefined;
-    }
-
-    return [...props.spanIds];
-  }, [props.spanIds]);
 
   // Extract attribute filters from logQuery for histogram/facets API calls
   const logQueryAttributes: Record<string, string> | undefined = useMemo(() => {
@@ -751,28 +705,35 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
 
   const fetchItems: (options?: FetchOptions) => Promise<void> = useCallback(
     async (options: FetchOptions = {}): Promise<void> => {
-      const { skipLoadingState = false } = options;
+      const skipLoadingState: boolean = options.skipLoadingState || false;
 
-      setError("");
+      if (skipLoadingState && liveRequestInFlight.current) {
+        return;
+      }
 
       if (skipLoadingState) {
-        if (liveRequestInFlight.current) {
-          return;
-        }
-
         liveRequestInFlight.current = true;
-        setIsLiveUpdating(true);
       } else {
         setIsLoading(true);
       }
 
+      const requestSequence: number = listRequestSequence.current + 1;
+      listRequestSequence.current = requestSequence;
+
       try {
+        let query: Query<Log> = buildLogFilterOptionsFromBaseQuery(
+          {
+            ...(baseLogQuery as unknown as JSONObject),
+            ...(filterOptions as unknown as JSONObject),
+          } as Query<Log>,
+          timeRange,
+          appliedFacetFilters,
+        );
+
         /*
          * When live polling, recompute the time range so the query window
          * slides forward to "now" and new logs become visible.
          */
-        let query: Query<Log> = filterOptions;
-
         if (
           skipLoadingState &&
           isLiveEnabled &&
@@ -781,7 +742,7 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
           const freshRange: InBetween<Date> =
             RangeStartAndEndDateTimeUtil.getStartAndEndDate(timeRange);
           query = {
-            ...filterOptions,
+            ...query,
             time: new InBetween<Date>(
               freshRange.startValue,
               freshRange.endValue,
@@ -802,8 +763,13 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
             requestOptions: {},
           });
 
+        if (requestSequence !== listRequestSequence.current) {
+          return;
+        }
+
         setLogs(listResult.data);
         setTotalCount(listResult.count);
+        setHasLoadedInitialItems(true);
 
         if (props.onCountChange) {
           props.onCountChange(listResult.count);
@@ -818,27 +784,43 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
           setPage(maximumPage);
         }
       } catch (err) {
-        setError(API.getFriendlyMessage(err));
+        if (requestSequence === listRequestSequence.current) {
+          setError(API.getFriendlyMessage(err));
+        }
       } finally {
-        if (skipLoadingState) {
+        if (requestSequence === listRequestSequence.current) {
+          if (skipLoadingState) {
+            liveRequestInFlight.current = false;
+          } else {
+            setIsLoading(false);
+          }
+        } else if (skipLoadingState) {
           liveRequestInFlight.current = false;
-          setIsLiveUpdating(false);
-        } else {
-          setIsLoading(false);
         }
       }
     },
     [
+      appliedFacetFilters,
+      baseLogQuery,
       filterOptions,
       isLiveEnabled,
       page,
       pageSize,
+      props.onCountChange,
       select,
       sortField,
       sortOrder,
       timeRange,
     ],
   );
+
+  const fetchItemsRef: React.MutableRefObject<
+    (options?: FetchOptions) => Promise<void>
+  > = useRef(fetchItems);
+
+  useEffect(() => {
+    fetchItemsRef.current = fetchItems;
+  }, [fetchItems]);
 
   // --- Fetch histogram ---
 
@@ -851,7 +833,7 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
         const dateRange: InBetween<Date> =
           RangeStartAndEndDateTimeUtil.getStartAndEndDate(timeRange);
 
-        const requestData: JSONObject = {
+        let requestData: JSONObject = {
           startTime: dateRange.startValue.toISOString(),
           endTime: dateRange.endValue.toISOString(),
         } as JSONObject;
@@ -872,54 +854,10 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
           (requestData as any)["spanIds"] = spanIdStrings;
         }
 
-        // Pass active facet filters to the histogram so it reflects the current view
-        const severityValues: Set<string> | undefined =
-          appliedFacetFilters.get("severityText");
-
-        if (severityValues && severityValues.size > 0) {
-          (requestData as any)["severityTexts"] = Array.from(severityValues);
-        }
-
-        /*
-         * primaryEntityId and the virtual resource facets (hostId / dockerHostId /
-         * kubernetesClusterId) all read out of the same `primaryEntityId` column —
-         * merge them into a single serviceIds list so the histogram applies
-         * the union of selected resources.
-         */
-        const resourceFilterIds: Set<string> = new Set<string>();
-        for (const facetKey of [
-          "primaryEntityId",
-          "hostId",
-          "dockerHostId",
-          "podmanHostId",
-          "kubernetesClusterId",
-        ]) {
-          const values: Set<string> | undefined =
-            appliedFacetFilters.get(facetKey);
-          if (values) {
-            for (const value of values) {
-              resourceFilterIds.add(value);
-            }
-          }
-        }
-
-        if (resourceFilterIds.size > 0) {
-          (requestData as any)["serviceIds"] = Array.from(resourceFilterIds);
-        }
-
-        const traceFilterValues: Set<string> | undefined =
-          appliedFacetFilters.get("traceId");
-
-        if (traceFilterValues && traceFilterValues.size > 0) {
-          (requestData as any)["traceIds"] = Array.from(traceFilterValues);
-        }
-
-        const spanFilterValues: Set<string> | undefined =
-          appliedFacetFilters.get("spanId");
-
-        if (spanFilterValues && spanFilterValues.size > 0) {
-          (requestData as any)["spanIds"] = Array.from(spanFilterValues);
-        }
+        requestData = applyFacetFiltersToLogsAggregationRequest(
+          requestData,
+          appliedFacetFilters,
+        );
 
         if (logQueryAttributes) {
           (requestData as any)["attributes"] = logQueryAttributes;
@@ -965,7 +903,7 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
         const dateRange: InBetween<Date> =
           RangeStartAndEndDateTimeUtil.getStartAndEndDate(timeRange);
 
-        const requestData: JSONObject = {
+        let requestData: JSONObject = {
           startTime: dateRange.startValue.toISOString(),
           endTime: dateRange.endValue.toISOString(),
           facetKeys: [
@@ -1001,6 +939,10 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
         if (logQueryEntityKeys) {
           (requestData as any)["entityKeys"] = logQueryEntityKeys;
         }
+        requestData = applyFacetFiltersToLogsAggregationRequest(
+          requestData,
+          appliedFacetFilters,
+        );
 
         /*
          * Only forward non-empty entries — an empty string would still match
@@ -1040,6 +982,7 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
       logQueryAttributes,
       logQueryEntityKeys,
       facetSearchText,
+      appliedFacetFilters,
     ]);
 
   // --- Handlers (defined before effects that reference them) ---
@@ -1048,7 +991,6 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
     if (isLiveEnabled) {
       setIsLiveEnabled(false);
       liveRequestInFlight.current = false;
-      setIsLiveUpdating(false);
     }
   }, [isLiveEnabled]);
 
@@ -1095,12 +1037,18 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
   }, [fetchItems]);
 
   useEffect(() => {
+    if (!hasLoadedInitialItems) {
+      return;
+    }
     void fetchHistogram();
-  }, [fetchHistogram]);
+  }, [fetchHistogram, hasLoadedInitialItems]);
 
   useEffect(() => {
+    if (!hasLoadedInitialItems) {
+      return;
+    }
     void fetchFacets();
-  }, [fetchFacets]);
+  }, [fetchFacets, hasLoadedInitialItems]);
 
   useEffect(() => {
     void fetchSavedViews();
@@ -1153,16 +1101,16 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
       return;
     }
 
-    void fetchItems({ skipLoadingState: true });
+    void fetchItemsRef.current({ skipLoadingState: true });
 
     const intervalId: number = window.setInterval(() => {
-      void fetchItems({ skipLoadingState: true });
+      void fetchItemsRef.current({ skipLoadingState: true });
     }, LIVE_POLL_INTERVAL_MS);
 
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [fetchItems, isLiveEnabled, page, sortField, sortOrder]);
+  }, [isLiveEnabled, page, sortField, sortOrder]);
 
   // Realtime
   useEffect(() => {
@@ -1220,7 +1168,6 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
         }
       } else {
         liveRequestInFlight.current = false;
-        setIsLiveUpdating(false);
       }
 
       setIsLiveEnabled(shouldEnable);
@@ -1232,9 +1179,8 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
     (newFilter: Query<Log>): void => {
       setFilterOptions(newFilter);
       setPage(1);
-      disableLiveMode();
     },
-    [disableLiveMode],
+    [],
   );
 
   const handlePageChange: (nextPage: number) => void = useCallback(
@@ -1319,19 +1265,14 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
     facets: Map<string, Set<string>>,
   ) => Query<Log> = useCallback(
     (facets: Map<string, Set<string>>): Query<Log> => {
-      const updatedFilter: Query<Log> = buildBaseQuery(props);
-
-      // Preserve the current time filter
-      const dateRange: InBetween<Date> =
-        RangeStartAndEndDateTimeUtil.getStartAndEndDate(timeRange);
-      (updatedFilter as any).time = new InBetween<Date>(
-        dateRange.startValue,
-        dateRange.endValue,
+      return buildLogFilterOptionsFromBaseQuery(
+        baseLogQuery,
+        timeRange,
+        facets,
       );
 
-      return applyFacetFiltersToQuery(updatedFilter, facets);
     },
-    [props, timeRange],
+    [baseLogQuery, timeRange],
   );
 
   const handleFacetInclude: (facetKey: string, value: string) => void =
@@ -1349,14 +1290,12 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
           nextFilters.get(facetKey);
 
         if (currentValues && currentValues.has(value)) {
-          // Toggle off: remove this value
           currentValues.delete(value);
 
           if (currentValues.size === 0) {
             nextFilters.delete(facetKey);
           }
         } else if (currentValues) {
-          // Add value to the existing set
           currentValues.add(value);
         } else {
           nextFilters.set(facetKey, new Set([value]));
@@ -1365,18 +1304,9 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
         setAppliedFacetFilters(nextFilters);
         setFilterOptions(rebuildFilterOptionsFromFacets(nextFilters));
         setPage(1);
-        disableLiveMode();
       },
-      [appliedFacetFilters, disableLiveMode, rebuildFilterOptionsFromFacets],
+      [appliedFacetFilters, rebuildFilterOptionsFromFacets],
     );
-
-  const handleFacetExclude: (_facetKey: string, _value: string) => void =
-    useCallback((_facetKey: string, _value: string): void => {
-      /*
-       * Exclusion filters are not yet supported in the Query type.
-       * This is a placeholder for future NOT-filter support.
-       */
-    }, []);
 
   const handleRemoveFilter: (facetKey: string, value: string) => void =
     useCallback(
@@ -1405,24 +1335,17 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
         setAppliedFacetFilters(nextFilters);
         setFilterOptions(rebuildFilterOptionsFromFacets(nextFilters));
         setPage(1);
-        disableLiveMode();
       },
-      [appliedFacetFilters, disableLiveMode, rebuildFilterOptionsFromFacets],
+      [appliedFacetFilters, rebuildFilterOptionsFromFacets],
     );
 
   const handleClearAllFilters: () => void = useCallback((): void => {
     setAppliedFacetFilters(new Map());
-    const base: Query<Log> = buildBaseQuery(props);
-    const dateRange: InBetween<Date> =
-      RangeStartAndEndDateTimeUtil.getStartAndEndDate(timeRange);
-    (base as any).time = new InBetween<Date>(
-      dateRange.startValue,
-      dateRange.endValue,
+    setFilterOptions(
+      buildLogFilterOptionsFromBaseQuery(baseLogQuery, timeRange, new Map()),
     );
-    setFilterOptions(base);
     setPage(1);
-    disableLiveMode();
-  }, [props, timeRange, disableLiveMode]);
+  }, [baseLogQuery, timeRange]);
 
   const getTraceRoute: (traceId: string) => Route | URL | undefined =
     useCallback((traceId: string): Route | URL | undefined => {
@@ -1772,7 +1695,7 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
           liveOptions={{
             isLive: isLiveEnabled,
             onToggle: handleLiveToggle,
-            isDisabled: isLiveUpdating,
+            isDisabled: false,
           }}
           getTraceRoute={getTraceRoute}
           getSpanRoute={getSpanRoute}
@@ -1782,7 +1705,6 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
           facetData={facetData}
           facetLoading={facetLoading}
           onFacetInclude={handleFacetInclude}
-          onFacetExclude={handleFacetExclude}
           onFacetSearchChange={(facetKey: string, text: string) => {
             setFacetSearchText(
               (prev: Record<string, string>): Record<string, string> => {

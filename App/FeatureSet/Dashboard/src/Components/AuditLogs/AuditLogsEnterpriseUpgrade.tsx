@@ -8,13 +8,11 @@ import { BILLING_ENABLED, IS_ENTERPRISE_EDITION } from "Common/UI/Config";
 import React, { FunctionComponent, ReactElement, useMemo } from "react";
 
 export const isAuditLogsEnterpriseEligible: () => boolean = (): boolean => {
-  if (IS_ENTERPRISE_EDITION) {
+  if (!BILLING_ENABLED || IS_ENTERPRISE_EDITION) {
     return true;
   }
-  if (BILLING_ENABLED) {
-    return ProjectUtil.getCurrentPlan() === PlanType.Enterprise;
-  }
-  return false;
+
+  return ProjectUtil.getCurrentPlan() === PlanType.Enterprise;
 };
 
 export interface ComponentProps {
