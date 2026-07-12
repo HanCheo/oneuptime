@@ -13,9 +13,6 @@ const HealthClickhouse: FunctionComponent = (): ReactElement => {
     <HealthPage
       title="ClickHouse"
       currentRoute={RouteMap[PageMap.HEALTH_CLICKHOUSE] as Route}
-      enterpriseOnly={true}
-      enterpriseFeatureName="ClickHouse cluster health"
-      enterpriseFeatureDescription="Shard reachability, the distributed-DDL queue, replica and replication-queue state and the Keeper connection for the ClickHouse backing this instance."
     >
       <ClickhouseCapacity />
       <ClickhouseCluster />

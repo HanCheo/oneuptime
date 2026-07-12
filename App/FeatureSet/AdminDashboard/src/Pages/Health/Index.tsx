@@ -98,6 +98,10 @@ const route: (page: PageMap) => Route = (page: PageMap): Route => {
   return RouteUtil.populateRouteParams(RouteMap[page] as Route);
 };
 
+/*
+ * The instance overview: live datastore connectivity, datastore capacity and
+ * background-queue backlogs for any master admin build.
+ */
 const HealthOverview: FunctionComponent = (): ReactElement => {
   const [data, setData] = useState<JSONObject | null>(null);
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
@@ -355,9 +359,7 @@ const Health: FunctionComponent = (): ReactElement => {
     <HealthPage
       title="Overview"
       currentRoute={RouteMap[PageMap.HEALTH] as Route}
-      enterpriseOnly={true}
-      enterpriseFeatureName="OneUptime Health Dashboard"
-      enterpriseFeatureDescription="A cluster-health summary of every datastore and the background-queue workers, with shortcuts into the full diagnostics for this OneUptime deployment."
+
     >
       <HealthOverview />
     </HealthPage>

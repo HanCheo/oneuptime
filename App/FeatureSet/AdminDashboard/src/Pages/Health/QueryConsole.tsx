@@ -110,6 +110,7 @@ const ENGINES: Array<EngineConfig> = [
   },
 ];
 
+const AVAILABLE_ENGINES: Array<EngineConfig> = ENGINES;
 const ROW_LIMIT_OPTIONS: Array<number> = [50, 100, 500, 1000];
 const HISTORY_LIMIT: number = 25;
 const HISTORY_KEY_PREFIX: string = "oneuptime-admin-query-history-";
@@ -164,9 +165,9 @@ const getEngineConfig: (engine: QueryEngine) => EngineConfig = (
   engine: QueryEngine,
 ): EngineConfig => {
   return (
-    ENGINES.find((config: EngineConfig): boolean => {
+    AVAILABLE_ENGINES.find((config: EngineConfig): boolean => {
       return config.key === engine;
-    }) || ENGINES[0]!
+    }) || AVAILABLE_ENGINES[0]!
   );
 };
 
@@ -273,7 +274,7 @@ const renderCell: (value: JSONValue) => ReactElement = (
 // --- Component ------------------------------------------------------------
 
 const QueryConsoleContent: FunctionComponent = (): ReactElement => {
-  const [engine, setEngine] = useState<QueryEngine>("postgres");
+  const [engine, setEngine] = useState<QueryEngine>(ENGINES[0]!.key);
   const [queries, setQueries] = useState<Record<QueryEngine, string>>({
     postgres: "",
     clickhouse: "",
@@ -427,7 +428,7 @@ const QueryConsoleContent: FunctionComponent = (): ReactElement => {
   const renderEngineSelector: () => ReactElement = (): ReactElement => {
     return (
       <div className="inline-flex rounded-md border border-gray-300 bg-gray-50 p-1">
-        {ENGINES.map((engineConfig: EngineConfig): ReactElement => {
+        {AVAILABLE_ENGINES.map((engineConfig: EngineConfig): ReactElement => {
           const isActive: boolean = engineConfig.key === engine;
           return (
             <button
@@ -850,9 +851,6 @@ const QueryConsole: FunctionComponent = (): ReactElement => {
     <HealthPage
       title="Query Console"
       currentRoute={RouteMap[PageMap.HEALTH_QUERY] as Route}
-      enterpriseOnly={true}
-      enterpriseFeatureName="Query console"
-      enterpriseFeatureDescription="Run ad-hoc Postgres, ClickHouse and Redis queries against the datastores backing this instance, with read-only safety and result export."
     >
       <QueryConsoleContent />
     </HealthPage>

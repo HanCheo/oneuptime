@@ -23,7 +23,6 @@ import logger from "Common/Server/Utils/Logger";
 import Response from "Common/Server/Utils/Response";
 import OneUptimeDate from "Common/Types/Date";
 import BadDataException from "Common/Types/Exception/BadDataException";
-import PaymentRequiredException from "Common/Types/Exception/PaymentRequiredException";
 import { JSONArray, JSONObject, JSONValue } from "Common/Types/JSON";
 import {
   getClickhouseClusterName,
@@ -3274,6 +3273,7 @@ async function getDiagnosticLogs(): Promise<JSONObject> {
   };
 }
 
+
 router.get(
   "/overview",
   MasterAdminAuthorization.isAuthorizedMasterAdminOrMasterApiKeyMiddleware,
@@ -3283,14 +3283,7 @@ router.get(
     next: NextFunction,
   ): Promise<void> => {
     try {
-      // OneUptime Health is an Enterprise Edition feature — gate server-side to match the UI.
-      if (!IsEnterpriseEdition) {
-        throw new PaymentRequiredException(
-          "The OneUptime Health dashboard is only available on the OneUptime Enterprise Edition. " +
-            "Please switch to the Enterprise Edition build to enable this feature. " +
-            "See https://oneuptime.com/enterprise/overview for details.",
-        );
-      }
+      // Master-admin only; Community and Enterprise should see the same health data.
 
       if (overviewCache && overviewCache.expiresAt > Date.now()) {
         return Response.sendJsonObjectResponse(req, res, overviewCache.data);
@@ -3313,183 +3306,11 @@ router.get(
 );
 
 /*
- * Full per-queue background-queue stats for the dedicated Background Queues
- * page. The overview above only carries the compact queue roll-up, so the drill
- * -in page reads the detailed breakdown here. Cached like the overview since the
- * introspection crosses Redis.
- */
-router.get(
-  "/queues",
-  MasterAdminAuthorization.isAuthorizedMasterAdminOrMasterApiKeyMiddleware,
-  async (
-    req: ExpressRequest,
-    res: ExpressResponse,
-    next: NextFunction,
-  ): Promise<void> => {
-    try {
-      if (!IsEnterpriseEdition) {
-        throw new PaymentRequiredException(
-          "The OneUptime Health dashboard is only available on the OneUptime Enterprise Edition. " +
-            "Please switch to the Enterprise Edition build to enable this feature. " +
-            "See https://oneuptime.com/enterprise/overview for details.",
-        );
-      }
-
-      if (queuesCache && queuesCache.expiresAt > Date.now()) {
-        return Response.sendJsonObjectResponse(req, res, queuesCache.data);
-      }
-
-      const queues: JSONArray = await getQueueStats();
-
-      const data: JSONObject = { queues };
-
-      queuesCache = {
-        data,
-        expiresAt: Date.now() + CACHE_TTL_MS,
-      };
-
-      return Response.sendJsonObjectResponse(req, res, data);
-    } catch (err) {
-      return next(err);
-    }
-  },
-);
-
-/*
- * Focused datastore endpoints keep database introspection on the datastore's
- * own page. The overview above now reads a compact cluster-health summary only.
- */
-router.get(
-  "/clickhouse-capacity",
-  MasterAdminAuthorization.isAuthorizedMasterAdminOrMasterApiKeyMiddleware,
-  async (
-    req: ExpressRequest,
-    res: ExpressResponse,
-    next: NextFunction,
-  ): Promise<void> => {
-    try {
-      if (!IsEnterpriseEdition) {
-        throw new PaymentRequiredException(
-          "ClickHouse capacity health is only available on the OneUptime Enterprise Edition. " +
-            "Please switch to the Enterprise Edition build to enable this feature. " +
-            "See https://oneuptime.com/enterprise/overview for details.",
-        );
-      }
-
-      return Response.sendJsonObjectResponse(
-        req,
-        res,
-        await getClickhouseStats(),
-      );
-    } catch (err) {
-      return next(err);
-    }
-  },
-);
-
-router.get(
-  "/redis",
-  MasterAdminAuthorization.isAuthorizedMasterAdminOrMasterApiKeyMiddleware,
-  async (
-    req: ExpressRequest,
-    res: ExpressResponse,
-    next: NextFunction,
-  ): Promise<void> => {
-    try {
-      if (!IsEnterpriseEdition) {
-        throw new PaymentRequiredException(
-          "Redis health is only available on the OneUptime Enterprise Edition. " +
-            "Please switch to the Enterprise Edition build to enable this feature. " +
-            "See https://oneuptime.com/enterprise/overview for details.",
-        );
-      }
-
-      return Response.sendJsonObjectResponse(req, res, await getRedisStats());
-    } catch (err) {
-      return next(err);
-    }
-  },
-);
-
-router.get(
-  "/instance-health-logs",
-  MasterAdminAuthorization.isAuthorizedMasterAdminOrMasterApiKeyMiddleware,
-  async (
-    req: ExpressRequest,
-    res: ExpressResponse,
-    next: NextFunction,
-  ): Promise<void> => {
-    try {
-      if (!IsEnterpriseEdition) {
-        throw new PaymentRequiredException(
-          "OneUptime Health logs are only available on the OneUptime Enterprise Edition. " +
-            "Please switch to the Enterprise Edition build to enable this feature. " +
-            "See https://oneuptime.com/enterprise/overview for details.",
-        );
-      }
-
-      const logs: Array<InstanceHealthLog> =
-        await InstanceHealthLogService.findBy({
-          query: {},
-          select: {
-            _id: true,
-            eventType: true,
-            status: true,
-            message: true,
-            completedAt: true,
-            nextCheckAt: true,
-            capacityBeforePercent: true,
-            capacityAfterPercent: true,
-            thresholdPercent: true,
-            targetPercent: true,
-            estimatedFreedBytes: true,
-            metadata: true,
-            createdAt: true,
-          },
-          sort: {
-            createdAt: SortOrder.Descending,
-          },
-          skip: 0,
-          limit: 50,
-          props: {
-            isRoot: true,
-          },
-        });
-
-      const items: JSONArray = logs.map(
-        (log: InstanceHealthLog): JSONObject => {
-          return {
-            _id: log._id || null,
-            eventType: log.eventType || null,
-            status: log.status || null,
-            message: log.message || "",
-            completedAt: toIsoOrNull(log.completedAt),
-            nextCheckAt: toIsoOrNull(log.nextCheckAt),
-            capacityBeforePercent: log.capacityBeforePercent ?? null,
-            capacityAfterPercent: log.capacityAfterPercent ?? null,
-            thresholdPercent: log.thresholdPercent ?? null,
-            targetPercent: log.targetPercent ?? null,
-            estimatedFreedBytes: log.estimatedFreedBytes ?? null,
-            metadata: log.metadata || null,
-            createdAt: toIsoOrNull(log.createdAt),
-          };
-        },
-      );
-
-      return Response.sendJsonObjectResponse(req, res, { logs: items });
-    } catch (err) {
-      return next(err);
-    }
-  },
-);
-
-/*
- * Recent failed jobs for a single queue, fetched on demand by the health
- * dashboard when an operator expands a queue. Like the overview it backs, it is
- * an Enterprise Edition feature and master-admin only. Each job includes its
- * full (redacted, size-capped) body, options, return value and per-job logs for
- * debugging — see redactFullFailedJob. Sensitive-looking fields and credential
- * patterns are scrubbed, but the body can still contain customer data.
+ * dashboard when an operator expands a queue. Master-admin only. Each job
+ * includes its full (redacted, size-capped) body, options, return value and
+ * per-job logs for debugging — see redactFullFailedJob. Sensitive-looking
+ * fields and credential patterns are scrubbed, but the body can still contain
+ * customer data.
  */
 router.get(
   "/queues/:queueName/failed-jobs",
@@ -3500,13 +3321,6 @@ router.get(
     next: NextFunction,
   ): Promise<void> => {
     try {
-      if (!IsEnterpriseEdition) {
-        throw new PaymentRequiredException(
-          "The OneUptime Health dashboard is only available on the OneUptime Enterprise Edition. " +
-            "Please switch to the Enterprise Edition build to enable this feature. " +
-            "See https://oneuptime.com/enterprise/overview for details.",
-        );
-      }
 
       const requestedQueue: string = String(req.params["queueName"]);
 
@@ -3541,8 +3355,8 @@ router.get(
  * Diagnostic logs for the health dashboard: this app instance's own recent log
  * lines plus what we can read from the datastores (Postgres log tail when
  * collected, ClickHouse system-table errors/logs, Redis SLOWLOG + counters).
- * Enterprise Edition + master-admin only, matching the overview it sits beside.
- * Everything is scrubbed for credentials but logs can contain customer data.
+ * Exposed to every master admin build. Everything is scrubbed for credentials
+ * but logs can contain customer data.
  */
 router.get(
   "/logs",
@@ -3553,13 +3367,6 @@ router.get(
     next: NextFunction,
   ): Promise<void> => {
     try {
-      if (!IsEnterpriseEdition) {
-        throw new PaymentRequiredException(
-          "The OneUptime Health dashboard is only available on the OneUptime Enterprise Edition. " +
-            "Please switch to the Enterprise Edition build to enable this feature. " +
-            "See https://oneuptime.com/enterprise/overview for details.",
-        );
-      }
 
       const data: JSONObject = await getDiagnosticLogs();
       return Response.sendJsonObjectResponse(req, res, data);
@@ -3573,10 +3380,10 @@ router.get(
  * ClickHouse cluster health for the dashboard: shard reachability, the
  * distributed-DDL queue, replica / replication-queue state and the Keeper
  * connection — the signals that reveal a wedged ON CLUSTER schema sync (where
- * the migrate Job or boot schema-sync times
- * out because a DDL task never finishes on some shards). Enterprise Edition +
- * master-admin only, like the overview and logs beside it. Reuses the support
- * bundle's diagnostics so the dashboard and the downloaded bundle never disagree.
+ * the migrate Job or boot schema-sync times out because a DDL task never
+ * finishes on some shards). This ClickHouse-specific page is available to any
+ * master admin build; it reuses the support bundle's diagnostics so the
+ * dashboard and the downloaded bundle never disagree.
  */
 router.get(
   "/clickhouse-cluster",
@@ -3587,13 +3394,6 @@ router.get(
     next: NextFunction,
   ): Promise<void> => {
     try {
-      if (!IsEnterpriseEdition) {
-        throw new PaymentRequiredException(
-          "The OneUptime Health dashboard is only available on the OneUptime Enterprise Edition. " +
-            "Please switch to the Enterprise Edition build to enable this feature. " +
-            "See https://oneuptime.com/enterprise/overview for details.",
-        );
-      }
 
       const diagnostics: JSONObject = await getClickhouseDiagnostics();
       const clusterHealth: JSONObject = (diagnostics["clusterHealth"] ||
@@ -3645,9 +3445,9 @@ router.get(
  * Postgres cluster health for the dashboard: streaming-replication lag, slot
  * health, connection saturation, lock/blocking pressure, cache-hit ratio and
  * transaction-ID wraparound headroom — the signals behind a failed
- * CloudNativePG failover or a stalled primary. Enterprise Edition + master-admin
- * only, like the ClickHouse cluster endpoint beside it. Reuses the same probe
- * used by the support bundle so the dashboard and the downloaded bundle agree.
+ * CloudNativePG failover or a stalled primary. Master-admin only, like the
+ * ClickHouse cluster endpoint beside it. Reuses the same probe used by the
+ * support bundle so the dashboard and the downloaded bundle agree.
  */
 router.get(
   "/postgres-cluster",
@@ -3691,15 +3491,7 @@ router.get(
     next: NextFunction,
   ): Promise<void> => {
     try {
-      if (!IsEnterpriseEdition) {
-        throw new PaymentRequiredException(
-          "The OneUptime Health dashboard is only available on the OneUptime Enterprise Edition. " +
-            "Please switch to the Enterprise Edition build to enable this feature. " +
-            "See https://oneuptime.com/enterprise/overview for details.",
-        );
-      }
-
-      const data: JSONObject = await getPostgresActivity();
+      const data: JSONObject = await getPostgresClusterHealth();
       return Response.sendJsonObjectResponse(req, res, data);
     } catch (err) {
       return next(err);
@@ -3820,9 +3612,8 @@ router.get(
  * ---------------------------------------------------------------------------
  * Query console
  *
- * Master-admin, Enterprise-Edition-only ad-hoc query execution against the
- * three datastores backing this instance (Postgres, ClickHouse, Redis). This is
- * a power tool for operators who already hold the datastore credentials, so it
+ * Master-admin ad-hoc query execution against the datastores backing this
+ * instance. This is a power tool for operators who
  * deliberately allows arbitrary statements — but defends the instance with:
  *   - read-only by default (an explicit opt-in is required to run writes / DDL),
  *   - hard row caps + per-cell size caps on the data returned,
@@ -3847,15 +3638,7 @@ const QUERY_REDIS_MAX_COMMANDS: number = 50;
 
 type QueryEngine = "postgres" | "clickhouse" | "redis";
 
-function assertEnterpriseQueryConsole(): void {
-  if (!IsEnterpriseEdition) {
-    throw new PaymentRequiredException(
-      "The OneUptime Health query console is only available on the OneUptime Enterprise Edition. " +
-        "Please switch to the Enterprise Edition build to enable this feature. " +
-        "See https://oneuptime.com/enterprise/overview for details.",
-    );
-  }
-}
+
 
 // Clamp a requested row limit into [1, QUERY_MAX_ROWS]; default QUERY_DEFAULT_ROWS.
 function resolveRowLimit(value: unknown): number {
@@ -4613,7 +4396,6 @@ async function handleQueryRequest(
   next: NextFunction,
 ): Promise<void> {
   try {
-    assertEnterpriseQueryConsole();
 
     const body: JSONObject = (req.body || {}) as JSONObject;
     const query: string = (body["query"] ?? "").toString();

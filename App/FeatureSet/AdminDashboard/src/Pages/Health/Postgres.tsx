@@ -10,9 +10,6 @@ const HealthPostgres: FunctionComponent = (): ReactElement => {
     <HealthPage
       title="PostgreSQL"
       currentRoute={RouteMap[PageMap.HEALTH_POSTGRES] as Route}
-      enterpriseOnly={true}
-      enterpriseFeatureName="PostgreSQL cluster health"
-      enterpriseFeatureDescription="Replication lag, slot health, connection saturation, lock pressure, cache-hit ratio and transaction-ID wraparound headroom for the Postgres backing this instance."
     >
       <PostgresCluster />
     </HealthPage>

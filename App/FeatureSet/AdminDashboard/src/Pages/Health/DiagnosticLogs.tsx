@@ -23,6 +23,8 @@ const TABS: Array<{ key: LogTab; label: string }> = [
   { key: "redis", label: "Redis" },
 ];
 
+const AVAILABLE_TABS: Array<{ key: LogTab; label: string }> = TABS;
+
 // Tailwind text colour for a log level.
 const levelClass: (level: string) => string = (level: string): string => {
   const normalized: string = level.toUpperCase();
@@ -69,11 +71,8 @@ const SectionNote: FunctionComponent<{ text: string }> = (props: {
 
 /*
  * Diagnostic logs card for the master-admin health dashboard. Loads on demand
- * (logs can be large) and shows the four reachable log surfaces in tabs:
- *   - Application: this app process's own recent in-memory log lines.
- *   - ClickHouse: system.errors / text_log / query_log / crash_log.
- *   - Postgres: server log tail (only when logging_collector is on).
- *   - Redis: SLOWLOG + INFO counters (server log files aren't reachable).
+ * (logs can be large). Shows every reachable log surface to any master admin
+ * build.
  * Container stdout/stderr is not reachable from the app process — see the note
  * at the foot of the card.
  */
@@ -475,26 +474,28 @@ const DiagnosticLogs: FunctionComponent = (): ReactElement => {
           <div>
             {/* Tabs */}
             <div className="flex flex-wrap gap-1 border-b border-gray-200">
-              {TABS.map((tab: { key: LogTab; label: string }): ReactElement => {
-                const isActive: boolean = activeTab === tab.key;
+              {AVAILABLE_TABS.map(
+                (tab: { key: LogTab; label: string }): ReactElement => {
+                  const isActive: boolean = activeTab === tab.key;
 
-                return (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
-                      isActive
-                        ? "border-indigo-500 text-indigo-600"
-                        : "border-transparent text-gray-500 hover:text-gray-700"
-                    }`}
-                    onClick={() => {
-                      setActiveTab(tab.key);
-                    }}
-                  >
-                    {tab.label}
-                  </button>
-                );
-              })}
+                  return (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
+                        isActive
+                          ? "border-indigo-500 text-indigo-600"
+                          : "border-transparent text-gray-500 hover:text-gray-700"
+                      }`}
+                      onClick={() => {
+                        setActiveTab(tab.key);
+                      }}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                },
+              )}
             </div>
 
             <div className="mt-3">{renderActiveTab()}</div>
