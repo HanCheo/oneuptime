@@ -41,6 +41,37 @@ export default class Queue {
     return jobId.replace(/:/g, "-");
   }
 
+  private static isLockedJobRemovalError(err: unknown): boolean {
+    const message: string =
+      err instanceof Error ? err.message : String(err || "");
+
+    return message.includes(
+      "could not be removed because it is locked by another worker",
+    );
+  }
+
+  private static async tryRemoveJob(data: {
+    queueName: QueueName;
+    jobId: string;
+    context: "addJob" | "removeJob";
+    job: Job;
+  }): Promise<boolean> {
+    try {
+      await data.job.remove();
+      return true;
+    } catch (err) {
+      if (this.isLockedJobRemovalError(err)) {
+        logger.debug(
+          `Queue ${data.queueName} ${data.context}: keeping active job ${data.jobId}`,
+          { service: "workers" },
+        );
+        return false;
+      }
+
+      throw err;
+    }
+  }
+
   private static async setupReconnectListener(
     queue: BullQueue,
     queueName: QueueName,
@@ -250,7 +281,12 @@ export default class Queue {
     const job: Job | undefined = await queue.getJob(sanitizedJobId);
 
     if (job) {
-      await job.remove();
+      await this.tryRemoveJob({
+        queueName,
+        jobId: sanitizedJobId,
+        context: "removeJob",
+        job,
+      });
     }
 
     /*
@@ -453,7 +489,16 @@ export default class Queue {
       const job: Job | undefined = await queue.getJob(sanitizedJobId);
 
       if (job) {
-        await job.remove();
+        const removed: boolean = await this.tryRemoveJob({
+          queueName,
+          jobId: sanitizedJobId,
+          context: "addJob",
+          job,
+        });
+
+        if (!removed) {
+          return job;
+        }
       }
     }
 

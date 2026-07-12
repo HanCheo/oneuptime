@@ -74,6 +74,7 @@ import MetricItemAggMV1mByServiceService from "./MetricItemAggMV1mByServiceServi
 import MetricItemAggMV1mByK8sClusterService from "./MetricItemAggMV1mByK8sClusterService";
 import MetricItemAggMV1mByContainerService from "./MetricItemAggMV1mByContainerService";
 import MutableMetricService from "./MutableMetricService";
+import MetricItemAttributeAggMV1mService from "./MetricItemAttributeAggMV1mService";
 import MetricBaselineService from "./MetricBaselineService";
 import MonitorCustomFieldService from "./MonitorCustomFieldService";
 import MonitorGroupOwnerTeamService from "./MonitorGroupOwnerTeamService";
@@ -541,6 +542,7 @@ export const AnalyticsServices: Array<
   MetricItemAggMV1mByServiceService,
   MetricItemAggMV1mByK8sClusterService,
   MetricItemAggMV1mByContainerService,
+  MetricItemAttributeAggMV1mService,
   MetricBaselineService,
   ExceptionInstanceService,
   MonitorLogService,

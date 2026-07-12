@@ -6,6 +6,7 @@ import MetricItemAggMV1mByHostV2 from "./MetricItemAggMV1mByHostV2";
 import MetricItemAggMV1mByService from "./MetricItemAggMV1mByService";
 import MetricItemAggMV1mByK8sCluster from "./MetricItemAggMV1mByK8sCluster";
 import MetricItemAggMV1mByContainer from "./MetricItemAggMV1mByContainer";
+import MetricItemAttributeAggMV1m from "./MetricItemAttributeAggMV1m";
 import MetricBaselineHourly from "./MetricBaselineHourly";
 import Span from "./Span";
 import ExceptionInstance from "./ExceptionInstance";
@@ -38,6 +39,7 @@ const AnalyticsModels: Array<{ new (): AnalyticsBaseModel }> = [
   MetricItemAggMV1mByService,
   MetricItemAggMV1mByK8sCluster,
   MetricItemAggMV1mByContainer,
+  MetricItemAttributeAggMV1m,
   MetricBaselineHourly,
   ExceptionInstance,
   MonitorLog,

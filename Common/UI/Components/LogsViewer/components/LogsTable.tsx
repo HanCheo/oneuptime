@@ -35,24 +35,28 @@ export const resolveLogIdentifier: (log: Log, index: number) => string = (
   log: Log,
   index: number,
 ): string => {
-  const possibleIds: Array<unknown> = [
-    (log as any).id,
-    (log as any)._id,
-    (log as any)._objectId,
-    log.traceId,
-    log.timeUnixNano,
-  ];
+  const stableId: unknown =
+    (log as any).id || (log as any)._id || (log as any)._objectId;
 
-  for (const candidate of possibleIds) {
-    if (!candidate) {
-      continue;
-    }
-
+  if (stableId) {
     try {
-      return candidate.toString();
+      return stableId.toString();
     } catch {
-      continue;
+      // Fall through to telemetry-derived key.
     }
+  }
+
+  const keyParts: Array<string> = [
+    log.traceId?.toString() || "",
+    log.spanId?.toString() || "",
+    log.timeUnixNano?.toString() || "",
+    log.severityText?.toString() || "",
+  ].filter((part: string) => {
+    return part.length > 0;
+  });
+
+  if (keyParts.length > 0) {
+    return `${keyParts.join(":")}:${index}`;
   }
 
   return `log-row-${index}`;

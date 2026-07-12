@@ -56,14 +56,14 @@ export class AggregationIntervalUtil {
     } else if (diff <= 1000 * 60 * 60 * 24 * 7) {
       // 7 days
       return AggregationInterval.Hour;
-    } else if (diff <= 1000 * 60 * 60 * 24 * 7 * 6) {
-      // 6 weeks
+    } else if (diff <= 1000 * 60 * 60 * 24 * 365 * 4) {
+      // <= 4y: daily precision keeps each series under 1,500 points.
       return AggregationInterval.Day;
-    } else if (diff <= 1000 * 60 * 60 * 24 * 30 * 6) {
-      // 6 months
+    } else if (diff <= 1000 * 60 * 60 * 24 * 365 * 20) {
+      // <= 20y: weekly precision keeps each series under 1,500 points.
       return AggregationInterval.Week;
-    } else if (diff <= 1000 * 60 * 60 * 24 * 365 * 6) {
-      // 6 years
+    } else if (diff <= 1000 * 60 * 60 * 24 * 365 * 120) {
+      // Very long windows still stay compact at month precision.
       return AggregationInterval.Month;
     }
     return AggregationInterval.Year;

@@ -23,6 +23,10 @@ import Permission, {
 } from "../../../Types/Permission";
 import Text from "../../../Types/Text";
 import CommonModel from "./CommonModel";
+import {
+  getClickhouseClusterName,
+  getClickhouseTelemetryShardingKey,
+} from "../../../Utils/Telemetry/Sharding";
 
 export type AnalyticsBaseModelType = { new (): AnalyticsBaseModel };
 
@@ -72,13 +76,16 @@ export default class AnalyticsBaseModel extends CommonModel {
      * cityHash64(ifNull(traceId, '')).
      */
     shardingKey?: string | undefined;
+    storagePolicy?: string | undefined;
     tableSettings?: string | undefined;
     projections?: Array<Projection> | undefined;
     materializedViews?: Array<MaterializedView> | undefined;
+    distributedTableName?: string | undefined;
+    distributedClusterName?: string | undefined;
+    distributedShardingKey?: string | undefined;
     enableMCP?: boolean | undefined;
     ttlExpression?: string | undefined; // e.g. "retentionDate DELETE"
     /*
-     * Column that `findBy` falls back to when the caller doesn't
      * specify a `sort`. Defaults to `createdAt` (matching the legacy
      * behavior), but heavy analytics tables should override this to
      * a column that participates in their ClickHouse sort key so the
@@ -187,11 +194,22 @@ export default class AnalyticsBaseModel extends CommonModel {
     this.enableRealtimeEventsOn = data.enableRealtimeEventsOn;
     this.partitionKey = data.partitionKey;
     this.shardingKey = data.shardingKey;
+    this.storagePolicy = data.storagePolicy;
     this.tableSettings = data.tableSettings;
+    this.ttlExpression = data.ttlExpression || "";
     this.projections = data.projections || [];
     this.materializedViews = data.materializedViews || [];
+    if (data.distributedClusterName) {
+      this.distributedClusterName = data.distributedClusterName;
+    } else if (this.distributedTableName) {
+      this.distributedClusterName = getClickhouseClusterName();
+    }
+    if (data.distributedShardingKey) {
+      this.distributedShardingKey = data.distributedShardingKey;
+    } else if (this.distributedTableName) {
+      this.distributedShardingKey = getClickhouseTelemetryShardingKey();
+    }
     this.enableMCP = data.enableMCP || false;
-    this.ttlExpression = data.ttlExpression || "";
 
     /*
      * Validate the override matches the schema. We deliberately do
@@ -263,6 +281,13 @@ export default class AnalyticsBaseModel extends CommonModel {
   }
   public set partitionKey(v: string) {
     this._partitionKey = v;
+  }
+  private _storagePolicy: string | undefined = undefined;
+  public get storagePolicy(): string | undefined {
+    return this._storagePolicy;
+  }
+  public set storagePolicy(v: string | undefined) {
+    this._storagePolicy = v;
   }
 
   private _shardingKey: string | undefined = undefined;
@@ -395,6 +420,54 @@ export default class AnalyticsBaseModel extends CommonModel {
   }
   public set materializedViews(v: Array<MaterializedView>) {
     this._materializedViews = v;
+  }
+
+  private _distributedTableName: string | undefined = undefined;
+  public get distributedTableName(): string | undefined {
+    return this._distributedTableName;
+  }
+  public set distributedTableName(v: string | undefined) {
+    this._distributedTableName = v;
+  }
+
+  private _distributedClusterName: string | undefined = undefined;
+  public get distributedClusterName(): string | undefined {
+    return this._distributedClusterName;
+  }
+  public set distributedClusterName(v: string | undefined) {
+    this._distributedClusterName = v;
+  }
+
+  private _distributedShardingKey: string | undefined = undefined;
+  public get distributedShardingKey(): string | undefined {
+    return this._distributedShardingKey;
+  }
+  public set distributedShardingKey(v: string | undefined) {
+    this._distributedShardingKey = v;
+  }
+
+  public isDistributedTableEnabled(): boolean {
+    return Boolean(
+      this.distributedTableName &&
+        this.distributedClusterName &&
+        this.distributedShardingKey,
+    );
+  }
+
+  public getReadTableName(): string {
+    return this.distributedTableName || this.tableName;
+  }
+
+  public getWriteTableName(): string {
+    return this.distributedTableName || this.tableName;
+  }
+
+  public getSchemaTableName(): string {
+    return this.tableName;
+  }
+
+  public getMutationTableName(): string {
+    return this.tableName;
   }
 
   private _enableMCP: boolean = false;

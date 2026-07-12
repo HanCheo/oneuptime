@@ -13,14 +13,23 @@ import { describe, expect, test, beforeEach } from "@jest/globals";
  */
 
 const backingStore: Map<string, Buffer> = new Map();
-let connected: boolean = true;
+let clientAvailable: boolean = true;
 let lastSetArgs: Array<unknown> = [];
+let connectCalls: number = 0;
 
 const fakeClient: {
+  status: string;
+  connect: () => Promise<string>;
   set: (key: string, value: Buffer, ...rest: Array<unknown>) => Promise<string>;
   getBuffer: (key: string) => Promise<Buffer | null>;
   del: (key: string) => Promise<number>;
 } = {
+  status: "ready",
+  connect: (): Promise<string> => {
+    connectCalls++;
+    fakeClient.status = "ready";
+    return Promise.resolve("OK");
+  },
   set: (
     key: string,
     value: Buffer,
@@ -46,10 +55,10 @@ jest.mock("Common/Server/Infrastructure/Redis", () => {
     __esModule: true,
     default: {
       getClient: (): unknown => {
-        return connected ? fakeClient : null;
+        return clientAvailable ? fakeClient : null;
       },
       isConnected: (): boolean => {
-        return connected;
+        return fakeClient.status === "ready";
       },
     },
   };
@@ -61,8 +70,10 @@ import TelemetryBodyStore from "../../FeatureSet/Telemetry/Utils/TelemetryBodySt
 describe("TelemetryBodyStore lifecycle", () => {
   beforeEach(() => {
     backingStore.clear();
-    connected = true;
+    clientAvailable = true;
+    fakeClient.status = "ready";
     lastSetArgs = [];
+    connectCalls = 0;
   });
 
   test("storeBody returns a namespaced key and writes with a 1-hour TTL", async () => {
@@ -77,8 +88,17 @@ describe("TelemetryBodyStore lifecycle", () => {
     expect(lastSetArgs).toEqual([key, buffer, "EX", 60 * 60]);
   });
 
-  test("storeBody throws when Redis is disconnected (so HTTP enqueue 5xxs)", async () => {
-    connected = false;
+  test("storeBody reconnects an idle Redis client before writing", async () => {
+    fakeClient.status = "wait";
+
+    await TelemetryBodyStore.storeBody(Buffer.from("otlp"));
+
+    expect(connectCalls).toBe(1);
+    expect(fakeClient.status).toBe("ready");
+  });
+
+  test("storeBody throws when no Redis client exists", async () => {
+    clientAvailable = false;
     await expect(
       TelemetryBodyStore.storeBody(Buffer.from("x")),
     ).rejects.toThrow(/Redis not connected/);
@@ -94,6 +114,16 @@ describe("TelemetryBodyStore lifecycle", () => {
     expect(first?.toString()).toBe("otlp");
     expect(second?.toString()).toBe("otlp");
     expect(backingStore.has(key)).toBe(true);
+  });
+
+  test("readBody tolerates a reconnecting Redis client", async () => {
+    const key: string = await TelemetryBodyStore.storeBody(Buffer.from("otlp"));
+    fakeClient.status = "reconnecting";
+
+    await expect(TelemetryBodyStore.readBody(key)).resolves.toEqual(
+      Buffer.from("otlp"),
+    );
+    expect(connectCalls).toBe(0);
   });
 
   test("deleteBody reclaims the body after the job succeeds", async () => {
@@ -112,15 +142,15 @@ describe("TelemetryBodyStore lifecycle", () => {
     ).toBeNull();
   });
 
-  test("readBody throws when Redis is disconnected (so the job retries)", async () => {
-    connected = false;
+  test("readBody throws when no Redis client exists", async () => {
+    clientAvailable = false;
     await expect(
       TelemetryBodyStore.readBody("telemetry:body:x"),
     ).rejects.toThrow(/Redis not connected/);
   });
 
-  test("deleteBody is a no-op when Redis is disconnected (TTL backstops)", async () => {
-    connected = false;
+  test("deleteBody is a no-op when no Redis client exists", async () => {
+    clientAvailable = false;
     await expect(
       TelemetryBodyStore.deleteBody("telemetry:body:x"),
     ).resolves.toBeUndefined();

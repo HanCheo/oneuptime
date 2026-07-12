@@ -25,7 +25,7 @@ export interface LogsFacetSidebarProps {
   podmanHostMap?: Dictionary<PodmanHost>;
   kubernetesClusterMap?: Dictionary<KubernetesCluster>;
   onIncludeFilter: (facetKey: string, value: string) => void;
-  onExcludeFilter: (facetKey: string, value: string) => void;
+  onExcludeFilter?: ((facetKey: string, value: string) => void) | undefined;
   activeFilters?: Array<ActiveFilter> | undefined;
   savedViews?: Array<LogsSavedViewOption> | undefined;
   selectedSavedViewId?: string | null | undefined;

@@ -55,6 +55,7 @@ import {
   LogsViewMode,
   normalizeLogsTableColumns,
 } from "./types";
+import filterLogsByActiveFilters from "./filterLogsByActiveFilters";
 import LogsAnalyticsView from "./components/LogsAnalyticsView";
 import { LogSearchBarRef } from "./components/LogSearchBar";
 import { queryStringToFilter } from "../../../Types/Log/LogQueryToFilter";
@@ -304,12 +305,16 @@ const LogsViewer: FunctionComponent<ComponentProps> = (
 
   const shouldClientSort: boolean = !props.onSortChange;
 
+  const activeFilterMatchedLogs: Array<Log> = useMemo(() => {
+    return filterLogsByActiveFilters(props.logs, props.activeFilters);
+  }, [props.logs, props.activeFilters]);
+
   const sortedLogs: Array<Log> = useMemo(() => {
     if (!shouldClientSort) {
-      return props.logs;
+      return activeFilterMatchedLogs;
     }
 
-    const cloned: Array<Log> = [...props.logs];
+    const cloned: Array<Log> = [...activeFilterMatchedLogs];
 
     cloned.sort((a: Log, b: Log) => {
       if (sortField === "time") {
@@ -342,7 +347,7 @@ const LogsViewer: FunctionComponent<ComponentProps> = (
     });
 
     return cloned;
-  }, [props.logs, shouldClientSort, sortField, sortOrder]);
+  }, [activeFilterMatchedLogs, shouldClientSort, sortField, sortOrder]);
 
   const shouldClientPaginate: boolean = props.totalCount === undefined;
 
@@ -391,6 +396,10 @@ const LogsViewer: FunctionComponent<ComponentProps> = (
       setSelectedLogId(null);
     }
   }, [displayedLogs, selectedLogId]);
+
+  useEffect(() => {
+    setSelectedLogId(null);
+  }, [props.activeFilters]);
 
   const loadServices: PromiseVoidFunction =
     useCallback(async (): Promise<void> => {
@@ -583,12 +592,20 @@ const LogsViewer: FunctionComponent<ComponentProps> = (
     void loadServices();
   }, [loadServices]);
 
-  // Load attributes eagerly for search bar suggestions
+  /*
+   * Attribute-key discovery is an expensive full-table scan on large log
+   * datasets. Defer it until the user actually starts an `@attribute` search
+   * instead of paying the cost on every page load.
+   */
   useEffect(() => {
+    const currentWord: string = (searchQuery.split(/\s+/).pop() || "").trim();
+    if (!currentWord.startsWith("@")) {
+      return;
+    }
     if (!attributesLoaded && !attributesLoading) {
       void loadAttributes();
     }
-  }, [attributesLoaded, attributesLoading, loadAttributes]);
+  }, [attributesLoaded, attributesLoading, loadAttributes, searchQuery]);
 
   /*
    * Lazily fetch values for the attribute the user is currently typing.
@@ -1129,7 +1146,7 @@ const LogsViewer: FunctionComponent<ComponentProps> = (
               podmanHostMap={podmanHostMap}
               kubernetesClusterMap={kubernetesClusterMap}
               onIncludeFilter={props.onFacetInclude || (() => {})}
-              onExcludeFilter={props.onFacetExclude || (() => {})}
+              onExcludeFilter={props.onFacetExclude}
               activeFilters={props.activeFilters}
               savedViews={props.savedViews}
               selectedSavedViewId={props.selectedSavedViewId}

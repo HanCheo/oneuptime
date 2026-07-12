@@ -474,6 +474,8 @@ const TracesViewer: FunctionComponent<Props> = (props: Props): ReactElement => {
   const livePollRef: React.MutableRefObject<ReturnType<
     typeof setInterval
   > | null> = useRef(null);
+  const spanListRequestSequence: React.MutableRefObject<number> =
+    useRef<number>(0);
 
   // spanId of the row whose inline detail panel is open (null = all collapsed).
   const [expandedSpanId, setExpandedSpanId] = useState<string | null>(null);
@@ -1135,6 +1137,10 @@ const TracesViewer: FunctionComponent<Props> = (props: Props): ReactElement => {
         setIsLoading(true);
       }
       setError("");
+
+      const requestSequence: number = spanListRequestSequence.current + 1;
+      spanListRequestSequence.current = requestSequence;
+
       try {
         const result: ListResult<Span> = await AnalyticsModelAPI.getList<Span>({
           modelType: Span,
@@ -1148,12 +1154,22 @@ const TracesViewer: FunctionComponent<Props> = (props: Props): ReactElement => {
           >,
           requestOptions: {},
         });
+
+        if (requestSequence !== spanListRequestSequence.current) {
+          return;
+        }
+
         setSpans(result.data);
         setTotalCount(result.count);
       } catch (err) {
-        setError(API.getFriendlyMessage(err));
+        if (requestSequence === spanListRequestSequence.current) {
+          setError(API.getFriendlyMessage(err));
+        }
       } finally {
-        if (!options.skipLoadingState) {
+        if (
+          requestSequence === spanListRequestSequence.current &&
+          !options.skipLoadingState
+        ) {
           setIsLoading(false);
         }
       }
