@@ -38,7 +38,12 @@ builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource
         .AddService(serviceName: builder.Environment.ApplicationName))
     .WithTracing(tracing => tracing
-        .AddAspNetCoreInstrumentation()
+        // RecordException captures unhandled request exceptions as span
+        // events ("exception") so they appear on OneUptime's Exceptions page.
+        .AddAspNetCoreInstrumentation(options =>
+        {
+            options.RecordException = true;
+        })
         .AddConsoleExporter()
          .AddOtlpExporter(opt =>
                 {
@@ -57,6 +62,8 @@ builder.Services.AddOpenTelemetry()
         .AddService(serviceName: builder.Environment.ApplicationName))
     .WithMetrics(metrics => metrics
         .AddAspNetCoreInstrumentation()
+        // Runtime metrics: CPU, memory (working set, GC heap), exception counters.
+        .AddRuntimeInstrumentation()
         .AddMeter("OtPrGrYa.Example")
         .AddConsoleExporter((exporterOptions, metricReaderOptions) =>
         {
@@ -116,8 +123,21 @@ async Task<String> LogError(ILogger<Program> logger)
 {
     // Create a new Activity scoped to the method
     using var activity = greeterActivitySource.StartActivity("GreeterActivity");
-    // Log a message
-    logger.LogError("Transaction "+Guid.NewGuid().ToString()+" failed");
+
+    try
+    {
+        throw new InvalidOperationException("Transaction " + Guid.NewGuid().ToString() + " failed");
+    }
+    catch (Exception ex)
+    {
+        // Record the exception on the span — this is what makes it show up
+        // on OneUptime's Exceptions page (span event named "exception").
+        activity?.RecordException(ex);
+
+        // Log with the exception object (not just a message string) so the
+        // log record carries exception.type/message/stacktrace attributes.
+        logger.LogError(ex, "Transaction failed");
+    }
 
     return $"Hello World! OpenTelemetry Trace: {Activity.Current?.Id}";
 }

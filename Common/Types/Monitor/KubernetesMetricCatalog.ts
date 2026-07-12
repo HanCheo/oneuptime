@@ -6,7 +6,8 @@ export type KubernetesMetricCategory =
   | "Node"
   | "Container"
   | "Workload"
-  | "HPA";
+  | "HPA"
+  | "Storage";
 
 export interface KubernetesMetricDefinition {
   id: string;
@@ -45,10 +46,10 @@ const kubernetesMetricCatalog: Array<KubernetesMetricDefinition> = [
     id: "pod-phase",
     friendlyName: "Pod Phase",
     description:
-      "Current phase of the pod (Pending, Running, Succeeded, Failed, Unknown)",
+      "Current phase of the pod, encoded in the metric value (1 = Pending, 2 = Running, 3 = Succeeded, 4 = Failed, 5 = Unknown). No phase attribute is emitted — filter/alert on the value. Min detects Pending, since 1 is the lowest encoding.",
     metricName: "k8s.pod.phase",
     category: "Pod",
-    defaultAggregation: MetricsAggregationType.Sum,
+    defaultAggregation: MetricsAggregationType.Min,
     defaultResourceScope: KubernetesResourceScope.Cluster,
     unit: "count",
   },
@@ -72,17 +73,60 @@ const kubernetesMetricCatalog: Array<KubernetesMetricDefinition> = [
     defaultResourceScope: KubernetesResourceScope.Pod,
     unit: "bytes",
   },
+  {
+    id: "pod-network-errors",
+    friendlyName: "Pod Network Errors",
+    description: "Number of network errors for pods",
+    metricName: "k8s.pod.network.errors",
+    category: "Pod",
+    defaultAggregation: MetricsAggregationType.Sum,
+    defaultResourceScope: KubernetesResourceScope.Pod,
+    unit: "count",
+  },
+  {
+    id: "pod-memory-working-set",
+    friendlyName: "Pod Memory Working Set",
+    description: "Working set memory in bytes for pods",
+    metricName: "k8s.pod.memory.working_set",
+    category: "Pod",
+    defaultAggregation: MetricsAggregationType.Avg,
+    defaultResourceScope: KubernetesResourceScope.Pod,
+    unit: "bytes",
+  },
+  {
+    id: "pod-cpu-limit-utilization",
+    friendlyName: "Pod CPU Limit Utilization",
+    description:
+      "Pod CPU usage as a fraction of the sum of its containers' CPU limits (0-1). Zero when no limits are set.",
+    metricName: "k8s.pod.cpu_limit_utilization",
+    category: "Pod",
+    defaultAggregation: MetricsAggregationType.Max,
+    defaultResourceScope: KubernetesResourceScope.Pod,
+    unit: "ratio",
+  },
+  {
+    id: "pod-memory-limit-utilization",
+    friendlyName: "Pod Memory Limit Utilization",
+    description:
+      "Pod memory usage as a fraction of the sum of its containers' memory limits (0-1). Zero when no limits are set.",
+    metricName: "k8s.pod.memory_limit_utilization",
+    category: "Pod",
+    defaultAggregation: MetricsAggregationType.Max,
+    defaultResourceScope: KubernetesResourceScope.Pod,
+    unit: "ratio",
+  },
 
   // Node Metrics
   {
     id: "node-cpu-utilization",
-    friendlyName: "Node CPU Utilization",
-    description: "CPU usage percentage for nodes",
+    friendlyName: "Node CPU Usage",
+    description:
+      "CPU cores used by nodes. Despite the 'utilization' name, kubeletstats reports this metric in cores, not percent.",
     metricName: "k8s.node.cpu.utilization",
     category: "Node",
     defaultAggregation: MetricsAggregationType.Avg,
     defaultResourceScope: KubernetesResourceScope.Node,
-    unit: "%",
+    unit: "cores",
   },
   {
     id: "node-memory-usage",
@@ -187,13 +231,126 @@ const kubernetesMetricCatalog: Array<KubernetesMetricDefinition> = [
     defaultResourceScope: KubernetesResourceScope.Pod,
     unit: "count",
   },
+  {
+    id: "container-cpu-utilization",
+    friendlyName: "Container CPU Usage",
+    description:
+      "CPU cores used by containers. Despite the 'utilization' name, kubeletstats reports this metric in cores, not percent.",
+    metricName: "container.cpu.utilization",
+    category: "Container",
+    defaultAggregation: MetricsAggregationType.Avg,
+    defaultResourceScope: KubernetesResourceScope.Pod,
+    unit: "cores",
+  },
+  {
+    id: "container-memory-usage",
+    friendlyName: "Container Memory Usage",
+    description: "Memory usage in bytes for containers",
+    metricName: "container.memory.usage",
+    category: "Container",
+    defaultAggregation: MetricsAggregationType.Avg,
+    defaultResourceScope: KubernetesResourceScope.Pod,
+    unit: "bytes",
+  },
+  {
+    id: "container-memory-working-set",
+    friendlyName: "Container Memory Working Set",
+    description:
+      "Working set memory in bytes for containers — the value the OOM killer compares against the memory limit",
+    metricName: "container.memory.working_set",
+    category: "Container",
+    defaultAggregation: MetricsAggregationType.Avg,
+    defaultResourceScope: KubernetesResourceScope.Pod,
+    unit: "bytes",
+  },
+  {
+    id: "container-filesystem-usage",
+    friendlyName: "Container Filesystem Usage",
+    description: "Filesystem usage in bytes for containers",
+    metricName: "container.filesystem.usage",
+    category: "Container",
+    defaultAggregation: MetricsAggregationType.Avg,
+    defaultResourceScope: KubernetesResourceScope.Pod,
+    unit: "bytes",
+  },
+  {
+    id: "container-filesystem-available",
+    friendlyName: "Container Filesystem Available",
+    description: "Filesystem space available in bytes for containers",
+    metricName: "container.filesystem.available",
+    category: "Container",
+    defaultAggregation: MetricsAggregationType.Avg,
+    defaultResourceScope: KubernetesResourceScope.Pod,
+    unit: "bytes",
+  },
+  {
+    id: "container-cpu-limit-utilization",
+    friendlyName: "Container CPU Limit Utilization",
+    description:
+      "Container CPU usage as a fraction of its CPU limit (0-1). Zero when no limit is set.",
+    metricName: "k8s.container.cpu_limit_utilization",
+    category: "Container",
+    defaultAggregation: MetricsAggregationType.Max,
+    defaultResourceScope: KubernetesResourceScope.Pod,
+    unit: "ratio",
+  },
+  {
+    id: "container-cpu-request-utilization",
+    friendlyName: "Container CPU Request Utilization",
+    description:
+      "Container CPU usage as a fraction of its CPU request (0-1). Zero when no request is set.",
+    metricName: "k8s.container.cpu_request_utilization",
+    category: "Container",
+    defaultAggregation: MetricsAggregationType.Avg,
+    defaultResourceScope: KubernetesResourceScope.Pod,
+    unit: "ratio",
+  },
+  {
+    id: "container-memory-limit-utilization",
+    friendlyName: "Container Memory Limit Utilization",
+    description:
+      "Container memory usage as a fraction of its memory limit (0-1). Zero when no limit is set.",
+    metricName: "k8s.container.memory_limit_utilization",
+    category: "Container",
+    defaultAggregation: MetricsAggregationType.Max,
+    defaultResourceScope: KubernetesResourceScope.Pod,
+    unit: "ratio",
+  },
+  {
+    id: "container-memory-request-utilization",
+    friendlyName: "Container Memory Request Utilization",
+    description:
+      "Container memory usage as a fraction of its memory request (0-1). Zero when no request is set.",
+    metricName: "k8s.container.memory_request_utilization",
+    category: "Container",
+    defaultAggregation: MetricsAggregationType.Avg,
+    defaultResourceScope: KubernetesResourceScope.Pod,
+    unit: "ratio",
+  },
+  {
+    id: "container-oom-events",
+    friendlyName: "Container OOM Events",
+    description:
+      "Number of out-of-memory (OOM) kill events for containers, scraped from cAdvisor. Cumulative counter — the value only ever increases.",
+    metricName: "container_oom_events_total",
+    category: "Container",
+    defaultAggregation: MetricsAggregationType.Max,
+    defaultResourceScope: KubernetesResourceScope.Cluster,
+    unit: "count",
+  },
 
   // Workload Metrics
+  /*
+   * The k8s_cluster receiver's deployment gauges are named
+   * `k8s.deployment.available` / `k8s.deployment.desired` — there is no
+   * `*_replicas` variant (and no `unavailable` metric in any receiver
+   * version; derive the mismatch as `desired - available`).
+   */
   {
     id: "deployment-available-replicas",
     friendlyName: "Deployment Available Replicas",
     description: "Number of available replicas in a deployment",
-    metricName: "k8s.deployment.available_replicas",
+    metricName: "k8s.deployment.available",
     category: "Workload",
     defaultAggregation: MetricsAggregationType.Min,
     defaultResourceScope: KubernetesResourceScope.Workload,
@@ -203,17 +360,7 @@ const kubernetesMetricCatalog: Array<KubernetesMetricDefinition> = [
     id: "deployment-desired-replicas",
     friendlyName: "Deployment Desired Replicas",
     description: "Number of desired replicas in a deployment",
-    metricName: "k8s.deployment.desired_replicas",
-    category: "Workload",
-    defaultAggregation: MetricsAggregationType.Max,
-    defaultResourceScope: KubernetesResourceScope.Workload,
-    unit: "count",
-  },
-  {
-    id: "deployment-unavailable-replicas",
-    friendlyName: "Deployment Unavailable Replicas",
-    description: "Number of unavailable replicas in a deployment",
-    metricName: "k8s.deployment.unavailable_replicas",
+    metricName: "k8s.deployment.desired",
     category: "Workload",
     defaultAggregation: MetricsAggregationType.Max,
     defaultResourceScope: KubernetesResourceScope.Workload,
@@ -242,9 +389,10 @@ const kubernetesMetricCatalog: Array<KubernetesMetricDefinition> = [
   },
   {
     id: "statefulset-ready-replicas",
-    friendlyName: "StatefulSet Ready Replicas",
-    description: "Number of ready replicas in a StatefulSet",
-    metricName: "k8s.statefulset.ready_replicas",
+    friendlyName: "StatefulSet Ready Pods",
+    description:
+      "Number of ready pods in a StatefulSet (the k8s_cluster receiver names this ready_pods, not ready_replicas)",
+    metricName: "k8s.statefulset.ready_pods",
     category: "Workload",
     defaultAggregation: MetricsAggregationType.Min,
     defaultResourceScope: KubernetesResourceScope.Workload,
@@ -312,6 +460,52 @@ const kubernetesMetricCatalog: Array<KubernetesMetricDefinition> = [
     defaultResourceScope: KubernetesResourceScope.Workload,
     unit: "count",
   },
+
+  // Storage Metrics
+  {
+    id: "volume-available",
+    friendlyName: "Volume Available",
+    description:
+      "Free space in bytes for pod volumes, including PersistentVolumeClaims",
+    metricName: "k8s.volume.available",
+    category: "Storage",
+    defaultAggregation: MetricsAggregationType.Avg,
+    defaultResourceScope: KubernetesResourceScope.Cluster,
+    unit: "bytes",
+  },
+  {
+    id: "volume-capacity",
+    friendlyName: "Volume Capacity",
+    description:
+      "Total capacity in bytes for pod volumes, including PersistentVolumeClaims",
+    metricName: "k8s.volume.capacity",
+    category: "Storage",
+    defaultAggregation: MetricsAggregationType.Avg,
+    defaultResourceScope: KubernetesResourceScope.Cluster,
+    unit: "bytes",
+  },
+  {
+    id: "volume-inodes-free",
+    friendlyName: "Volume Inodes Free",
+    description:
+      "Number of free inodes for pod volumes, including PersistentVolumeClaims",
+    metricName: "k8s.volume.inodes.free",
+    category: "Storage",
+    defaultAggregation: MetricsAggregationType.Min,
+    defaultResourceScope: KubernetesResourceScope.Cluster,
+    unit: "count",
+  },
+  {
+    id: "volume-inodes-used",
+    friendlyName: "Volume Inodes Used",
+    description:
+      "Number of used inodes for pod volumes, including PersistentVolumeClaims",
+    metricName: "k8s.volume.inodes.used",
+    category: "Storage",
+    defaultAggregation: MetricsAggregationType.Max,
+    defaultResourceScope: KubernetesResourceScope.Cluster,
+    unit: "count",
+  },
 ];
 
 export function getAllKubernetesMetrics(): Array<KubernetesMetricDefinition> {
@@ -343,5 +537,5 @@ export function getKubernetesMetricByMetricName(
 }
 
 export function getAllKubernetesMetricCategories(): Array<KubernetesMetricCategory> {
-  return ["Pod", "Node", "Container", "Workload", "HPA"];
+  return ["Pod", "Node", "Container", "Workload", "HPA", "Storage"];
 }

@@ -1394,10 +1394,15 @@ function createKubernetesDashboardConfig(): DashboardViewConfig {
    * - CPU widgets show cores, not a percent. OTel's k8s.*.cpu.utilization
    *   is a misnamed cores gauge (cores in use, NOT a [0, 1] ratio), and
    *   this templated dashboard's renderer can't divide by per-node
-   *   allocatable CPU to form a true percentage. So we use the `.usage`
-   *   metrics and label them in cores ("2.3 cores"). The Kubernetes
-   *   cluster overview page — which fetches `k8s.node.allocatable_cpu` —
-   *   is where CPU is shown as a real "% of capacity".
+   *   allocatable CPU to form a true percentage. The properly named
+   *   `.cpu.usage` replacements are optional and disabled in the bundled
+   *   collector (otel-collector-contrib v0.96.0, pinned in the
+   *   kubernetes-agent chart, which never enables them) — so
+   *   `.utilization` is the only CPU-cores metric that actually flows.
+   *   We query it and label the widgets in cores ("2.3 cores"). The
+   *   Kubernetes cluster overview page — which fetches
+   *   `k8s.node.allocatable_cpu` — is where CPU is shown as a real
+   *   "% of capacity".
    */
   const components: Array<DashboardBaseComponent> = [
     // Row 0: Title
@@ -1412,7 +1417,7 @@ function createKubernetesDashboardConfig(): DashboardViewConfig {
 
     /*
      * Row 1: Key cluster metrics — averages render with proper units via
-     * ValueFormatter (CPU usage → cores, memory.usage → "MB"/"GB").
+     * ValueFormatter (CPU cores gauge → cores, memory.usage → "MB"/"GB").
      * All four are "higher = worse" (closer to capacity = bad).
      */
     createValueComponent({
@@ -1421,7 +1426,7 @@ function createKubernetesDashboardConfig(): DashboardViewConfig {
       left: 0,
       width: 3,
       metricConfig: {
-        metricName: "k8s.pod.cpu.usage",
+        metricName: "k8s.pod.cpu.utilization",
         aggregationType: MetricsAggregationType.Avg,
       },
       trendDirection: DashboardValueTrendDirection.HigherIsWorse,
@@ -1443,7 +1448,7 @@ function createKubernetesDashboardConfig(): DashboardViewConfig {
       left: 6,
       width: 3,
       metricConfig: {
-        metricName: "k8s.node.cpu.usage",
+        metricName: "k8s.node.cpu.utilization",
         aggregationType: MetricsAggregationType.Avg,
       },
       trendDirection: DashboardValueTrendDirection.HigherIsWorse,
@@ -1469,7 +1474,7 @@ function createKubernetesDashboardConfig(): DashboardViewConfig {
       width: 6,
       height: 3,
       metricConfig: {
-        metricName: "k8s.pod.cpu.usage",
+        metricName: "k8s.pod.cpu.utilization",
         aggregationType: MetricsAggregationType.Avg,
         legend: "CPU Cores",
       },
@@ -1535,9 +1540,11 @@ function createKubernetesDashboardConfig(): DashboardViewConfig {
      * chart. This was a 0-100 CPU gauge, but the cores-valued
      * `k8s.node.cpu.utilization` pinned it to nonsense (e.g. 711%) and
      * the templated renderer can't divide by allocatable CPU to make a
-     * real percentage — so we show total cores in use instead. The old
-     * "Memory Utilization" gauge over raw bytes is gone — see
-     * top-of-function comment.
+     * real percentage — so we sum that same cores gauge into a "cores
+     * in use" tile instead (see top-of-function comment for why
+     * `.utilization` is the metric queried). The old "Memory
+     * Utilization" gauge over raw bytes is gone — see top-of-function
+     * comment.
      */
     createValueComponent({
       title: "Cluster CPU (cores in use)",
@@ -1545,7 +1552,7 @@ function createKubernetesDashboardConfig(): DashboardViewConfig {
       left: 0,
       width: 4,
       metricConfig: {
-        metricName: "k8s.node.cpu.usage",
+        metricName: "k8s.node.cpu.utilization",
         aggregationType: MetricsAggregationType.Sum,
       },
       trendDirection: DashboardValueTrendDirection.HigherIsWorse,
@@ -1595,7 +1602,7 @@ function createKubernetesDashboardConfig(): DashboardViewConfig {
       width: 6,
       height: 3,
       metricConfig: {
-        metricName: "k8s.deployment.available_replicas",
+        metricName: "k8s.deployment.available",
         aggregationType: MetricsAggregationType.Min,
       },
     }),

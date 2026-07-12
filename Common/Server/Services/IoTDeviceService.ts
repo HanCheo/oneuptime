@@ -2,6 +2,7 @@ import DatabaseService from "./DatabaseService";
 import Model from "../../Models/DatabaseModels/IoTDevice";
 import CaptureSpan from "../Utils/Telemetry/CaptureSpan";
 import ColumnLength from "../../Types/Database/ColumnLength";
+import IoTDeviceState from "../../Types/IoT/IoTDeviceState";
 import ObjectID from "../../Types/ObjectID";
 import OneUptimeDate from "../../Types/Date";
 import { clampIoTTimestamp } from "../Utils/Telemetry/IoTSnapshotScan";
@@ -15,13 +16,23 @@ import logger from "../Utils/Logger";
  * telemetry ingest path. Callers are either:
  *   - OtelMetricsIngestService (bulkUpsert + bulkUpdateLatestMetrics,
  *     from the iot_* snapshot scan in processMetricsAsync)
- *   - CleanupStaleResources worker (deleteStaleForFleet)
+ *   - CleanupStaleResources worker (markStaleForFleet /
+ *     retireStaleForFleet — lifecycle transitions, never deletes)
+ *   - CheckDeviceHeartbeats worker (findDevicesGoneSilent /
+ *     findSilentDownDevices — silence-based offline detection)
  *   - IoTDeviceAPI / the dashboard pages (reads via the inherited
  *     DatabaseService CRUD)
  *
  * Identity + status and the latest-metric mirror both arrive on the
  * same metric scrape (unlike K8s, which needs a separate k8sobjects
  * log stream for identity), so both writes happen in the same flush.
+ *
+ * Lifecycle: rows walk Online -> Offline -> Stale -> Retired (see
+ * IoTDeviceState) instead of being hard-deleted on staleness. The
+ * upsert computes the Online/Offline half from the reported
+ * iot_device_up; the workers own the Stale/Retired half. Any fresh
+ * datapoint moves a device straight back to Online/Offline inside the
+ * upsert SQL, so recovery needs no worker involvement.
  *
  * ------------------------------------------------------------------
  */
@@ -56,8 +67,59 @@ export interface IoTInventorySummary {
   countsByKind: Record<string, number>;
 }
 
+/*
+ * Fleet-level rollup facts computed from the full inventory in one
+ * round-trip — the source for IoTFleet.deviceCount/onlineDeviceCount
+ * and the iot_fleet_* rollup metric series. Percentiles/weak-signal
+ * only consider FRESH readings (metricsUpdatedAt within the stale
+ * threshold) so a dead device's last battery value doesn't haunt the
+ * fleet stats; they are null when no fresh readings exist.
+ */
+export interface IoTFleetRollupStats {
+  deviceCount: number;
+  onlineCount: number;
+  offlineCount: number;
+  staleCount: number;
+  batteryPercentP50: number | null;
+  batteryPercentP10: number | null;
+  /*
+   * Null (not 0) when NO device has a fresh signal reading — a
+   * fabricated zero would auto-resolve weak-signal monitors between
+   * slow check-ins.
+   */
+  weakSignalCount: number | null;
+}
+
+// Matches the shipped Weak Signal template threshold.
+export const IOT_WEAK_SIGNAL_DBM: number = -100;
+
+/*
+ * A device the heartbeat sweep considers silent: no data for 3x its
+ * effective check-in interval. Carries enough identity to flip state
+ * through the hooked update path and to synthesize an
+ * iot_device_up = 0 datapoint that groups into the same series as the
+ * device's real data.
+ */
+export interface SilentIoTDevice {
+  id: ObjectID;
+  kind: string;
+  externalId: string;
+  deviceType: string | null;
+  firmwareVersion: string | null;
+  state: string;
+}
+
 const UPSERT_BATCH_SIZE: number = 500;
-const STALE_DELETE_WARN_THRESHOLD: number = 100;
+const STALE_TRANSITION_WARN_THRESHOLD: number = 100;
+
+/*
+ * Silence-based offline detection trips at GRACE_FACTOR x the expected
+ * check-in interval (floored at MIN_SILENCE_SECONDS) — one missed
+ * scrape is jitter, three is an outage. Shared by the SQL below and
+ * the CheckDeviceHeartbeats worker.
+ */
+export const IOT_SILENCE_GRACE_FACTOR: number = 3;
+export const IOT_MIN_SILENCE_SECONDS: number = 60;
 
 /*
  * The identity/text columns are ShortText (100 chars). A single value
@@ -91,8 +153,22 @@ const UPSERT_COLUMNS: Array<string> = [
   "isUp",
   "uptimeSeconds",
   "lastSeenAt",
+  "state",
+  "stateChangedAt",
   "version",
 ];
+
+/*
+ * The Online/Offline half of the lifecycle, computed from the
+ * post-merge isUp inside the upsert. Inlined as SQL literals (enum
+ * values, not user input). Kept as a fragment so the CASE in the
+ * SET list and the CASE inside the stateChangedAt comparison can
+ * never drift apart.
+ */
+const UPSERT_STATE_CASE_SQL: string = `CASE
+  WHEN COALESCE(EXCLUDED."isUp", "IoTDevice"."isUp") IS FALSE THEN '${IoTDeviceState.Offline}'
+  ELSE '${IoTDeviceState.Online}'
+END`;
 
 export class Service extends DatabaseService<Model> {
   public constructor() {
@@ -194,16 +270,25 @@ export class Service extends DatabaseService<Model> {
           r.isUp,
           r.uptimeSeconds !== null ? Math.trunc(r.uptimeSeconds) : null,
           r.lastSeenAt,
+          // Fresh insert: state derives from this scrape's isUp alone.
+          r.isUp === false ? IoTDeviceState.Offline : IoTDeviceState.Online,
+          r.lastSeenAt, // stateChangedAt (first observation)
           0, // version (BaseModel @VersionColumn)
         );
       }
 
+      /*
+       * On conflict the row just reported, so state snaps back to the
+       * Online/Offline half of the lifecycle no matter where the
+       * workers had walked it (Stale/Retired) — recovery is automatic.
+       * stateChangedAt only advances when the state actually flips.
+       */
       const sql: string = `
         INSERT INTO "IoTDevice" (
           "projectId", "iotFleetId", "kind", "externalId",
           "name", "deviceType", "firmwareVersion",
           "isUp", "uptimeSeconds",
-          "lastSeenAt", "version"
+          "lastSeenAt", "state", "stateChangedAt", "version"
         )
         VALUES ${valueFragments.join(", ")}
         ON CONFLICT ("projectId", "iotFleetId", "kind", "externalId")
@@ -214,6 +299,12 @@ export class Service extends DatabaseService<Model> {
           "isUp" = COALESCE(EXCLUDED."isUp", "IoTDevice"."isUp"),
           "uptimeSeconds" = COALESCE(EXCLUDED."uptimeSeconds", "IoTDevice"."uptimeSeconds"),
           "lastSeenAt" = EXCLUDED."lastSeenAt",
+          "state" = ${UPSERT_STATE_CASE_SQL},
+          "stateChangedAt" = CASE
+            WHEN (${UPSERT_STATE_CASE_SQL}) IS DISTINCT FROM "IoTDevice"."state"
+            THEN EXCLUDED."lastSeenAt"
+            ELSE "IoTDevice"."stateChangedAt"
+          END,
           "updatedAt" = now()
         WHERE EXCLUDED."lastSeenAt" >= "IoTDevice"."lastSeenAt"
       `;
@@ -290,8 +381,18 @@ export class Service extends DatabaseService<Model> {
       let paramIndex: number = 3;
 
       for (const m of chunk) {
+        /*
+         * 10 slots per row — one for every column in the VALUES alias
+         * below (kind, externalId, cpu, mem, maxMem, memPct, battery,
+         * signal, temp, observedAt). A missing slot here doesn't fail
+         * loudly in unit tests (they assert params, not the fragment):
+         * it fails EVERY live UPDATE with a bind-count mismatch and
+         * the mirror silently never updates — exactly the bug this
+         * comment is guarding against (temp's ::numeric slot was once
+         * dropped when battery/signal/temp replaced disk columns).
+         */
         valueFragments.push(
-          `($${paramIndex++}, $${paramIndex++}, $${paramIndex++}::numeric, $${paramIndex++}::bigint, $${paramIndex++}::bigint, $${paramIndex++}::numeric, $${paramIndex++}::numeric, $${paramIndex++}::numeric, $${paramIndex++}::timestamptz)`,
+          `($${paramIndex++}, $${paramIndex++}, $${paramIndex++}::numeric, $${paramIndex++}::bigint, $${paramIndex++}::bigint, $${paramIndex++}::numeric, $${paramIndex++}::numeric, $${paramIndex++}::numeric, $${paramIndex++}::numeric, $${paramIndex++}::timestamptz)`,
         );
         params.push(
           m.kind,
@@ -348,86 +449,217 @@ export class Service extends DatabaseService<Model> {
   }
 
   /**
-   * Age out devices in a fleet whose last scrape is older than
-   * olderThan. Only called by the cleanup worker for fleets that are
-   * still connected — a disconnected fleet keeps its last-known
-   * inventory.
+   * Walk devices in a fleet that have been silent past their
+   * EFFECTIVE stale cutoff to Stale. Returns the number of
+   * transitioned rows. Only called by the cleanup worker for fleets
+   * that are still connected — a disconnected fleet keeps its
+   * last-known inventory states (the fleet-level Disconnected status
+   * covers the blackout).
    *
-   * REGISTERED devices (a matching IoTDeviceCredential row on
-   * fleet + externalId, kind-agnostic) are flipped to Down instead of
-   * deleted: registration marks the device as expected, so a silent
-   * device must stay visible in the inventory as offline. Unregistered
-   * devices are hard-deleted as before (the inventory is a projection
-   * of what is actively reporting).
+   * The cutoff is per-device, not fleet-wide: a device with an
+   * expected check-in interval only goes Stale after
+   * GREATEST(grace x interval, stale threshold) of silence, so a
+   * healthy hourly reporter is never walked to Stale mid-gap (it
+   * would otherwise flap Online -> Stale -> Online every reporting
+   * cycle and drop out of the online counts). Because the Stale
+   * cutoff is always >= the silence cutoff, the heartbeat sweep's
+   * hooked Online -> Offline flip fires before this walk can touch a
+   * detection-enabled device.
    *
-   * The UPDATE deliberately does NOT touch lastSeenAt: reconnect
-   * recovery relies on the bulkUpsert dominance guard comparing a
-   * fresh scrape against the old timestamp, so the next scrape flips
-   * isUp back to true automatically.
+   * Raw SQL (unhooked) is deliberate: Stale is a bookkeeping state,
+   * not an alerting event — the alerting transition is Online ->
+   * Offline, which the heartbeat sweep routes through the hooked
+   * update path.
    */
   @CaptureSpan()
-  public async deleteStaleForFleet(data: {
+  public async markStaleForFleet(data: {
     iotFleetId: ObjectID;
-    olderThan: Date;
-  }): Promise<{ deleted: number; markedOffline: number }> {
-    // Postgres driver returns [rows, affected] for UPDATE/DELETE — normalize.
-    const affectedOf: (result: unknown) => number = (
-      result: unknown,
-    ): number => {
-      if (Array.isArray(result) && result.length >= 2) {
-        const second: unknown = (result as Array<unknown>)[1];
-        if (typeof second === "number") {
-          return second;
-        }
-      }
-      return 0;
-    };
+    anchor: Date;
+    fleetDefaultCheckinIntervalSeconds: number | null;
+  }): Promise<number> {
+    const staleSeconds: number = this.getStaleThresholdMinutes() * 60;
 
-    /*
-     * Registered = a live credential on the same PROJECT + fleet +
-     * device id (kind-agnostic — one credential covers every kind the
-     * device reports). The projectId correlation is defense-in-depth
-     * against a credential row that names another project's fleet.
-     */
-    const registeredSubquery: string = `SELECT 1 FROM "IoTDeviceCredential" c WHERE c."projectId" = "IoTDevice"."projectId" AND c."iotFleetId" = "IoTDevice"."iotFleetId" AND c."externalId" = "IoTDevice"."externalId" AND c."deletedAt" IS NULL`;
+    const affected: number = await this.runStateTransition({
+      sql: `UPDATE "IoTDevice"
+            SET "state" = $3, "stateChangedAt" = now(), "updatedAt" = now()
+            WHERE "iotFleetId" = $1
+              AND "lastSeenAt" < ($2::timestamptz - make_interval(secs =>
+                    GREATEST(
+                      ${IOT_SILENCE_GRACE_FACTOR} * COALESCE("expectedCheckinIntervalSeconds", $6, 0),
+                      ${staleSeconds}
+                    )))
+              AND "state" IN ($4, $5)`,
+      params: [
+        data.iotFleetId.toString(),
+        data.anchor,
+        IoTDeviceState.Stale,
+        IoTDeviceState.Online,
+        IoTDeviceState.Offline,
+        data.fleetDefaultCheckinIntervalSeconds,
+      ],
+    });
 
-    /*
-     * A device whose iot.device.kind label drifts mints a second
-     * inventory row (identity is projectId+iotFleetId+kind+externalId).
-     * Without this guard the stale old-kind row would be registered
-     * (same externalId) and pinned as Offline forever. "Shadowed" =
-     * a fresher row exists for the same (fleet, externalId) under a
-     * different kind — keep only the freshest, let shadows self-heal.
-     */
-    const shadowedSubquery: string = `SELECT 1 FROM "IoTDevice" d2 WHERE d2."iotFleetId" = "IoTDevice"."iotFleetId" AND d2."externalId" = "IoTDevice"."externalId" AND d2."kind" <> "IoTDevice"."kind" AND d2."lastSeenAt" > "IoTDevice"."lastSeenAt" AND d2."deletedAt" IS NULL`;
-
-    const params: Array<unknown> = [data.iotFleetId.toString(), data.olderThan];
-
-    const updateResult: unknown = await this.getRepository().manager.query(
-      `UPDATE "IoTDevice" SET "isUp" = false, "updatedAt" = now() WHERE "iotFleetId" = $1 AND "lastSeenAt" < $2 AND "isUp" IS DISTINCT FROM false AND EXISTS (${registeredSubquery}) AND NOT EXISTS (${shadowedSubquery})`,
-      params,
-    );
-
-    const deleteResult: unknown = await this.getRepository().manager.query(
-      `DELETE FROM "IoTDevice" WHERE "iotFleetId" = $1 AND "lastSeenAt" < $2 AND (NOT EXISTS (${registeredSubquery}) OR EXISTS (${shadowedSubquery}))`,
-      params,
-    );
-
-    const deleted: number = affectedOf(deleteResult);
-    const markedOffline: number = affectedOf(updateResult);
-
-    if (deleted > STALE_DELETE_WARN_THRESHOLD) {
+    if (affected > STALE_TRANSITION_WARN_THRESHOLD) {
       logger.warn(
-        `IoTDevice cleanup deleted ${deleted} stale rows for fleet ${data.iotFleetId.toString()} — larger than expected; investigate agent health.`,
+        `IoTDevice cleanup marked ${affected} rows Stale for fleet ${data.iotFleetId.toString()} — larger than expected; investigate agent health.`,
       );
     }
 
-    return { deleted, markedOffline };
+    return affected;
+  }
+
+  /**
+   * Walk devices silent past the retirement threshold to Retired —
+   * across ALL fleets in one statement (the cutoff is wall-clock and
+   * identical everywhere, so there is no reason to loop fleets).
+   * Retired rows are kept for history but drop out of fleet counts
+   * and default lists. Includes disconnected fleets: 30 days of
+   * silence is a decommissioned device either way.
+   */
+  @CaptureSpan()
+  public async retireStaleDevices(data: { olderThan: Date }): Promise<number> {
+    return this.runStateTransition({
+      sql: `UPDATE "IoTDevice"
+            SET "state" = $2, "stateChangedAt" = now(), "updatedAt" = now()
+            WHERE "lastSeenAt" < $1
+              AND ("state" IS NULL OR "state" != $2)`,
+      params: [data.olderThan, IoTDeviceState.Retired],
+    });
+  }
+
+  private async runStateTransition(data: {
+    sql: string;
+    params: Array<unknown>;
+  }): Promise<number> {
+    const result: Array<{ affected?: number }> | { affected?: number } =
+      await this.getRepository().manager.query(data.sql, data.params);
+
+    // Postgres driver returns [rows, affected] for UPDATE — normalize.
+    let affected: number = 0;
+    if (Array.isArray(result) && result.length >= 2) {
+      const second: unknown = (result as Array<unknown>)[1];
+      if (typeof second === "number") {
+        affected = second;
+      }
+    }
+    return affected;
+  }
+
+  /**
+   * Devices that just went silent: still Online, but no data for
+   * IOT_SILENCE_GRACE_FACTOR x their effective check-in interval
+   * (per-device override, else the fleet default passed in). These
+   * are the rows the heartbeat sweep flips to Offline through the
+   * hooked update path so downstream automation fires.
+   */
+  @CaptureSpan()
+  public async findDevicesGoneSilent(data: {
+    iotFleetId: ObjectID;
+    fleetDefaultCheckinIntervalSeconds: number | null;
+    now: Date;
+    limit: number;
+  }): Promise<Array<SilentIoTDevice>> {
+    return this.querySilentDevices({
+      ...data,
+      states: [IoTDeviceState.Online],
+    });
+  }
+
+  /**
+   * Devices currently down by silence (already flipped Offline, or
+   * walked to Stale while still silent). The heartbeat sweep emits a
+   * synthetic iot_device_up = 0 datapoint for each every tick so the
+   * offline monitors keep seeing the outage until real data returns —
+   * without this, an empty rolling window would auto-resolve the
+   * incident while the device is still dark.
+   */
+  @CaptureSpan()
+  public async findSilentDownDevices(data: {
+    iotFleetId: ObjectID;
+    fleetDefaultCheckinIntervalSeconds: number | null;
+    now: Date;
+    limit: number;
+  }): Promise<Array<SilentIoTDevice>> {
+    return this.querySilentDevices({
+      ...data,
+      states: [IoTDeviceState.Offline, IoTDeviceState.Stale],
+    });
+  }
+
+  private async querySilentDevices(data: {
+    iotFleetId: ObjectID;
+    fleetDefaultCheckinIntervalSeconds: number | null;
+    now: Date;
+    limit: number;
+    states: Array<IoTDeviceState>;
+  }): Promise<Array<SilentIoTDevice>> {
+    const statePlaceholders: Array<string> = data.states.map(
+      (_state: IoTDeviceState, index: number) => {
+        return `$${5 + index}`;
+      },
+    );
+
+    const rows: Array<{
+      _id: string;
+      kind: string;
+      externalId: string;
+      deviceType: string | null;
+      firmwareVersion: string | null;
+      state: string;
+    }> = await this.getRepository().manager.query(
+      `SELECT "_id", "kind", "externalId", "deviceType", "firmwareVersion", "state"
+       FROM "IoTDevice"
+       WHERE "iotFleetId" = $1
+         AND "isArchived" IS NOT TRUE
+         AND COALESCE("expectedCheckinIntervalSeconds", $2) IS NOT NULL
+         AND "lastSeenAt" < ($3::timestamptz - make_interval(secs =>
+               GREATEST(
+                 ${IOT_SILENCE_GRACE_FACTOR} * COALESCE("expectedCheckinIntervalSeconds", $2),
+                 ${IOT_MIN_SILENCE_SECONDS}
+               )))
+         AND "state" IN (${statePlaceholders.join(", ")})
+       ORDER BY "lastSeenAt" ASC
+       LIMIT $4`,
+      [
+        data.iotFleetId.toString(),
+        data.fleetDefaultCheckinIntervalSeconds,
+        data.now,
+        data.limit,
+        ...data.states,
+      ],
+    );
+
+    return rows.map(
+      (row: {
+        _id: string;
+        kind: string;
+        externalId: string;
+        deviceType: string | null;
+        firmwareVersion: string | null;
+        state: string;
+      }): SilentIoTDevice => {
+        return {
+          id: new ObjectID(row._id),
+          kind: row.kind,
+          externalId: row.externalId,
+          deviceType: row.deviceType,
+          firmwareVersion: row.firmwareVersion,
+          state: row.state,
+        };
+      },
+    );
   }
 
   /**
    * Compute the sidebar/overview summary in Postgres: counts per kind
    * plus the total and online device breakdowns, in a single round-trip.
+   *
+   * Retired and archived devices are excluded — they are history, not
+   * fleet capacity. "Online" means lifecycle-Online: a device that is
+   * Stale (silent past the threshold) no longer counts as up even
+   * though its last reported isUp was true. Legacy NULL states (rows
+   * predating the lifecycle migration) count as present and fall back
+   * to isUp for the online check.
    */
   @CaptureSpan()
   public async getInventorySummary(data: {
@@ -441,11 +673,20 @@ export class Service extends DatabaseService<Model> {
     }> = await this.getRepository().manager.query(
       `SELECT "kind",
               COUNT(*)::text AS count,
-              COUNT(*) FILTER (WHERE "isUp" IS TRUE)::text AS "upCount"
+              COUNT(*) FILTER (
+                WHERE ("state" = $3 OR ("state" IS NULL AND "isUp" IS TRUE))
+              )::text AS "upCount"
        FROM "IoTDevice"
        WHERE "projectId" = $1 AND "iotFleetId" = $2 AND "deletedAt" IS NULL
+         AND ("state" IS NULL OR "state" != $4)
+         AND "isArchived" IS NOT TRUE
        GROUP BY "kind"`,
-      [data.projectId.toString(), data.iotFleetId.toString()],
+      [
+        data.projectId.toString(),
+        data.iotFleetId.toString(),
+        IoTDeviceState.Online,
+        IoTDeviceState.Retired,
+      ],
     );
 
     const countsByKind: Record<string, number> = {};
@@ -488,6 +729,145 @@ export class Service extends DatabaseService<Model> {
       }
     }
     return 15;
+  }
+
+  /**
+   * One-round-trip rollup over a fleet's ACTIVE inventory (non-
+   * Retired, non-archived): lifecycle counts, fresh battery
+   * percentiles and fresh weak-signal count. Legacy NULL-state rows
+   * fall back to isUp for the online/offline split.
+   *
+   * "Fresh" is per-device, mirroring the lifecycle SQL: a reading is
+   * fresh within GREATEST(grace x COALESCE(device interval, fleet
+   * default, 0), stale threshold) of now — an hourly reporter's
+   * battery reading stays fresh for its whole reporting gap instead
+   * of dropping out of the percentiles for 45 of every 60 minutes
+   * (which would flap the Fleet Battery Low template between
+   * check-ins).
+   */
+  @CaptureSpan()
+  public async getFleetRollupStats(data: {
+    projectId: ObjectID;
+    iotFleetId: ObjectID;
+    fleetDefaultCheckinIntervalSeconds: number | null;
+    now: Date;
+  }): Promise<IoTFleetRollupStats> {
+    const staleSeconds: number = this.getStaleThresholdMinutes() * 60;
+    const freshPredicate: string = `"metricsUpdatedAt" > ($6::timestamptz - make_interval(secs =>
+             GREATEST(
+               ${IOT_SILENCE_GRACE_FACTOR} * COALESCE("expectedCheckinIntervalSeconds", $8, 0),
+               ${staleSeconds}
+             )))`;
+
+    const rows: Array<{
+      deviceCount: string;
+      onlineCount: string;
+      offlineCount: string;
+      staleCount: string;
+      batteryP50: number | string | null;
+      batteryP10: number | string | null;
+      weakSignalCount: string;
+      freshSignalReadings: string;
+    }> = await this.getRepository().manager.query(
+      `SELECT
+         COUNT(*)::text AS "deviceCount",
+         COUNT(*) FILTER (
+           WHERE "state" = $3 OR ("state" IS NULL AND "isUp" IS TRUE)
+         )::text AS "onlineCount",
+         COUNT(*) FILTER (
+           WHERE "state" = $4 OR ("state" IS NULL AND "isUp" IS FALSE)
+         )::text AS "offlineCount",
+         COUNT(*) FILTER (WHERE "state" = $5)::text AS "staleCount",
+         percentile_cont(0.5) WITHIN GROUP (ORDER BY "latestBatteryPercent")
+           FILTER (WHERE "latestBatteryPercent" IS NOT NULL AND ${freshPredicate}) AS "batteryP50",
+         percentile_cont(0.1) WITHIN GROUP (ORDER BY "latestBatteryPercent")
+           FILTER (WHERE "latestBatteryPercent" IS NOT NULL AND ${freshPredicate}) AS "batteryP10",
+         COUNT(*) FILTER (
+           WHERE "latestSignalStrengthDbm" IS NOT NULL
+             AND "latestSignalStrengthDbm" < ${IOT_WEAK_SIGNAL_DBM}
+             AND ${freshPredicate}
+         )::text AS "weakSignalCount",
+         COUNT(*) FILTER (
+           WHERE "latestSignalStrengthDbm" IS NOT NULL AND ${freshPredicate}
+         )::text AS "freshSignalReadings"
+       FROM "IoTDevice"
+       WHERE "projectId" = $1 AND "iotFleetId" = $2 AND "deletedAt" IS NULL
+         AND ("state" IS NULL OR "state" != $7)
+         AND "isArchived" IS NOT TRUE`,
+      [
+        data.projectId.toString(),
+        data.iotFleetId.toString(),
+        IoTDeviceState.Online,
+        IoTDeviceState.Offline,
+        IoTDeviceState.Stale,
+        data.now,
+        IoTDeviceState.Retired,
+        data.fleetDefaultCheckinIntervalSeconds,
+      ],
+    );
+
+    const row: (typeof rows)[0] | undefined = rows[0];
+
+    const toIntOrZero: (value: string | undefined) => number = (
+      value: string | undefined,
+    ): number => {
+      const parsed: number = parseInt(value || "0", 10);
+      return isNaN(parsed) ? 0 : parsed;
+    };
+    const toFloatOrNull: (
+      value: number | string | null | undefined,
+    ) => number | null = (
+      value: number | string | null | undefined,
+    ): number | null => {
+      if (value === null || value === undefined) {
+        return null;
+      }
+      const parsed: number =
+        typeof value === "number" ? value : parseFloat(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+
+    const freshSignalReadings: number = toIntOrZero(row?.freshSignalReadings);
+
+    return {
+      deviceCount: toIntOrZero(row?.deviceCount),
+      onlineCount: toIntOrZero(row?.onlineCount),
+      offlineCount: toIntOrZero(row?.offlineCount),
+      staleCount: toIntOrZero(row?.staleCount),
+      batteryPercentP50: toFloatOrNull(row?.batteryP50),
+      batteryPercentP10: toFloatOrNull(row?.batteryP10),
+      /*
+       * No fresh signal readings at all means "no data", not "no weak
+       * devices" — null suppresses the datapoint instead of emitting
+       * a fabricated healthy zero.
+       */
+      weakSignalCount:
+        freshSignalReadings > 0 ? toIntOrZero(row?.weakSignalCount) : null,
+    };
+  }
+
+  /**
+   * Retirement cutoff for the cleanup worker. Devices silent past
+   * this walk to Retired (kept for history, dropped from counts).
+   * Tune via IOT_INVENTORY_RETIRE_DAYS (min 1, default 30).
+   */
+  public getRetireThresholdDate(nowOverride?: Date): Date {
+    const days: number = this.getRetireThresholdDays();
+    return OneUptimeDate.addRemoveDays(
+      nowOverride || OneUptimeDate.getCurrentDate(),
+      -days,
+    );
+  }
+
+  public getRetireThresholdDays(): number {
+    const raw: string | undefined = process.env["IOT_INVENTORY_RETIRE_DAYS"];
+    if (raw) {
+      const parsed: number = parseInt(raw, 10);
+      if (!isNaN(parsed) && parsed >= 1) {
+        return parsed;
+      }
+    }
+    return 30;
   }
 }
 

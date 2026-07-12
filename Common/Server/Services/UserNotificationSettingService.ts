@@ -581,6 +581,40 @@ export class Service extends DatabaseService<UserNotificationSetting> {
     await this.addAlertEpisodeNotificationSettings(userId, projectId);
     await this.addIncidentEpisodeNotificationSettings(userId, projectId);
     await this.addScheduledMaintenanceNotificationSettings(userId, projectId);
+    await this.addInfrastructureClusterOwnerNotificationSettings(
+      userId,
+      projectId,
+    );
+    await this.addResourceOwnerAddedNotificationSettings(userId, projectId);
+  }
+
+  public async addResourceOwnerAddedNotificationSettings(
+    userId: ObjectID,
+    projectId: ObjectID,
+  ): Promise<void> {
+    const eventTypes: Array<NotificationSettingEventType> = [
+      NotificationSettingEventType.SEND_MONITOR_GROUP_OWNER_ADDED_NOTIFICATION,
+      NotificationSettingEventType.SEND_HOST_OWNER_ADDED_NOTIFICATION,
+      NotificationSettingEventType.SEND_DOCKER_HOST_OWNER_ADDED_NOTIFICATION,
+      NotificationSettingEventType.SEND_PODMAN_HOST_OWNER_ADDED_NOTIFICATION,
+      NotificationSettingEventType.SEND_CLOUD_RESOURCE_OWNER_ADDED_NOTIFICATION,
+      NotificationSettingEventType.SEND_SERVERLESS_FUNCTION_OWNER_ADDED_NOTIFICATION,
+      NotificationSettingEventType.SEND_RUM_APPLICATION_OWNER_ADDED_NOTIFICATION,
+      NotificationSettingEventType.SEND_DASHBOARD_OWNER_ADDED_NOTIFICATION,
+      NotificationSettingEventType.SEND_WORKFLOW_OWNER_ADDED_NOTIFICATION,
+      NotificationSettingEventType.SEND_RUNBOOK_OWNER_ADDED_NOTIFICATION,
+      NotificationSettingEventType.SEND_ON_CALL_DUTY_POLICY_OWNER_ADDED_NOTIFICATION,
+      NotificationSettingEventType.SEND_ON_CALL_DUTY_POLICY_SCHEDULE_OWNER_ADDED_NOTIFICATION,
+      NotificationSettingEventType.SEND_INCOMING_CALL_POLICY_OWNER_ADDED_NOTIFICATION,
+    ];
+
+    for (const eventType of eventTypes) {
+      await this.addNotificationSettingIfNotExists(
+        userId,
+        projectId,
+        eventType,
+      );
+    }
   }
 
   private async addScheduledMaintenanceNotificationSettings(
@@ -591,6 +625,41 @@ export class Service extends DatabaseService<UserNotificationSetting> {
       userId,
       projectId,
       NotificationSettingEventType.SEND_SCHEDULED_MAINTENANCE_REMINDER_OWNER_NOTIFICATION,
+    );
+  }
+
+  public async addInfrastructureClusterOwnerNotificationSettings(
+    userId: ObjectID,
+    projectId: ObjectID,
+  ): Promise<void> {
+    await this.addNotificationSettingIfNotExists(
+      userId,
+      projectId,
+      NotificationSettingEventType.SEND_KUBERNETES_CLUSTER_OWNER_ADDED_NOTIFICATION,
+    );
+
+    await this.addNotificationSettingIfNotExists(
+      userId,
+      projectId,
+      NotificationSettingEventType.SEND_PROXMOX_CLUSTER_OWNER_ADDED_NOTIFICATION,
+    );
+
+    await this.addNotificationSettingIfNotExists(
+      userId,
+      projectId,
+      NotificationSettingEventType.SEND_CEPH_CLUSTER_OWNER_ADDED_NOTIFICATION,
+    );
+
+    await this.addNotificationSettingIfNotExists(
+      userId,
+      projectId,
+      NotificationSettingEventType.SEND_DOCKER_SWARM_CLUSTER_OWNER_ADDED_NOTIFICATION,
+    );
+
+    await this.addNotificationSettingIfNotExists(
+      userId,
+      projectId,
+      NotificationSettingEventType.SEND_IOT_FLEET_OWNER_ADDED_NOTIFICATION,
     );
   }
 

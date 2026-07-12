@@ -279,6 +279,88 @@ const EVENT_LIBRARY: Record<
     description: "You are added as an owner of an AI agent.",
   },
 
+  [NotificationSettingEventType.SEND_KUBERNETES_CLUSTER_OWNER_ADDED_NOTIFICATION]:
+    {
+      label: "Added as Kubernetes cluster owner",
+      description: "You are added as an owner of a Kubernetes cluster.",
+    },
+  [NotificationSettingEventType.SEND_PROXMOX_CLUSTER_OWNER_ADDED_NOTIFICATION]:
+    {
+      label: "Added as Proxmox cluster owner",
+      description: "You are added as an owner of a Proxmox cluster.",
+    },
+  [NotificationSettingEventType.SEND_CEPH_CLUSTER_OWNER_ADDED_NOTIFICATION]: {
+    label: "Added as Ceph cluster owner",
+    description: "You are added as an owner of a Ceph cluster.",
+  },
+  [NotificationSettingEventType.SEND_DOCKER_SWARM_CLUSTER_OWNER_ADDED_NOTIFICATION]:
+    {
+      label: "Added as Docker Swarm cluster owner",
+      description: "You are added as an owner of a Docker Swarm cluster.",
+    },
+  [NotificationSettingEventType.SEND_IOT_FLEET_OWNER_ADDED_NOTIFICATION]: {
+    label: "Added as IoT fleet owner",
+    description: "You are added as an owner of an IoT fleet.",
+  },
+
+  [NotificationSettingEventType.SEND_MONITOR_GROUP_OWNER_ADDED_NOTIFICATION]: {
+    label: "Added as monitor group owner",
+    description: "You are added as an owner of a monitor group.",
+  },
+  [NotificationSettingEventType.SEND_HOST_OWNER_ADDED_NOTIFICATION]: {
+    label: "Added as host owner",
+    description: "You are added as an owner of a host.",
+  },
+  [NotificationSettingEventType.SEND_DOCKER_HOST_OWNER_ADDED_NOTIFICATION]: {
+    label: "Added as Docker host owner",
+    description: "You are added as an owner of a Docker host.",
+  },
+  [NotificationSettingEventType.SEND_PODMAN_HOST_OWNER_ADDED_NOTIFICATION]: {
+    label: "Added as Podman host owner",
+    description: "You are added as an owner of a Podman host.",
+  },
+  [NotificationSettingEventType.SEND_CLOUD_RESOURCE_OWNER_ADDED_NOTIFICATION]: {
+    label: "Added as cloud resource owner",
+    description: "You are added as an owner of a cloud resource.",
+  },
+  [NotificationSettingEventType.SEND_SERVERLESS_FUNCTION_OWNER_ADDED_NOTIFICATION]:
+    {
+      label: "Added as serverless function owner",
+      description: "You are added as an owner of a serverless function.",
+    },
+  [NotificationSettingEventType.SEND_RUM_APPLICATION_OWNER_ADDED_NOTIFICATION]:
+    {
+      label: "Added as RUM application owner",
+      description: "You are added as an owner of a RUM application.",
+    },
+  [NotificationSettingEventType.SEND_DASHBOARD_OWNER_ADDED_NOTIFICATION]: {
+    label: "Added as dashboard owner",
+    description: "You are added as an owner of a dashboard.",
+  },
+  [NotificationSettingEventType.SEND_WORKFLOW_OWNER_ADDED_NOTIFICATION]: {
+    label: "Added as workflow owner",
+    description: "You are added as an owner of a workflow.",
+  },
+  [NotificationSettingEventType.SEND_RUNBOOK_OWNER_ADDED_NOTIFICATION]: {
+    label: "Added as runbook owner",
+    description: "You are added as an owner of a runbook.",
+  },
+  [NotificationSettingEventType.SEND_ON_CALL_DUTY_POLICY_OWNER_ADDED_NOTIFICATION]:
+    {
+      label: "Added as on-call policy owner",
+      description: "You are added as an owner of an on-call policy.",
+    },
+  [NotificationSettingEventType.SEND_ON_CALL_DUTY_POLICY_SCHEDULE_OWNER_ADDED_NOTIFICATION]:
+    {
+      label: "Added as on-call schedule owner",
+      description: "You are added as an owner of an on-call schedule.",
+    },
+  [NotificationSettingEventType.SEND_INCOMING_CALL_POLICY_OWNER_ADDED_NOTIFICATION]:
+    {
+      label: "Added as incoming call policy owner",
+      description: "You are added as an owner of an incoming call policy.",
+    },
+
   [NotificationSettingEventType.SEND_WHEN_USER_IS_ON_CALL_ROSTER]: {
     label: "You go on-call",
     description: "Your shift on an on-call roster begins.",
@@ -696,6 +778,38 @@ const Settings: FunctionComponent<PageComponentProps> = (): ReactElement => {
       NotificationSettingEventType.SEND_PROBE_STATUS_CHANGED_OWNER_NOTIFICATION,
       NotificationSettingEventType.SEND_PROBE_OWNER_ADDED_NOTIFICATION,
     ]),
+    buildSection("Monitor Groups", "Notify me about monitor groups I own.", [
+      NotificationSettingEventType.SEND_MONITOR_GROUP_OWNER_ADDED_NOTIFICATION,
+    ]),
+    buildSection(
+      "Infrastructure Clusters",
+      "Notify me about Kubernetes, Proxmox, Ceph, and Docker Swarm clusters and IoT fleets I own.",
+      [
+        NotificationSettingEventType.SEND_KUBERNETES_CLUSTER_OWNER_ADDED_NOTIFICATION,
+        NotificationSettingEventType.SEND_PROXMOX_CLUSTER_OWNER_ADDED_NOTIFICATION,
+        NotificationSettingEventType.SEND_CEPH_CLUSTER_OWNER_ADDED_NOTIFICATION,
+        NotificationSettingEventType.SEND_DOCKER_SWARM_CLUSTER_OWNER_ADDED_NOTIFICATION,
+        NotificationSettingEventType.SEND_IOT_FLEET_OWNER_ADDED_NOTIFICATION,
+      ],
+    ),
+    buildSection(
+      "Infrastructure Hosts",
+      "Notify me about hosts, Docker hosts, and Podman hosts I own.",
+      [
+        NotificationSettingEventType.SEND_HOST_OWNER_ADDED_NOTIFICATION,
+        NotificationSettingEventType.SEND_DOCKER_HOST_OWNER_ADDED_NOTIFICATION,
+        NotificationSettingEventType.SEND_PODMAN_HOST_OWNER_ADDED_NOTIFICATION,
+      ],
+    ),
+    buildSection(
+      "Cloud, Serverless & RUM",
+      "Notify me about cloud resources, serverless functions, and RUM applications I own.",
+      [
+        NotificationSettingEventType.SEND_CLOUD_RESOURCE_OWNER_ADDED_NOTIFICATION,
+        NotificationSettingEventType.SEND_SERVERLESS_FUNCTION_OWNER_ADDED_NOTIFICATION,
+        NotificationSettingEventType.SEND_RUM_APPLICATION_OWNER_ADDED_NOTIFICATION,
+      ],
+    ),
   ];
 
   const statusPages: Array<SectionDef> = [
@@ -732,6 +846,27 @@ const Settings: FunctionComponent<PageComponentProps> = (): ReactElement => {
         NotificationSettingEventType.SEND_WHEN_USER_IS_REMOVED_FROM_ON_CALL_POLICY,
       ],
     ),
+    buildSection(
+      "On-Call Ownership",
+      "Notify me when I am added as an owner of on-call policies, schedules, and incoming call policies.",
+      [
+        NotificationSettingEventType.SEND_ON_CALL_DUTY_POLICY_OWNER_ADDED_NOTIFICATION,
+        NotificationSettingEventType.SEND_ON_CALL_DUTY_POLICY_SCHEDULE_OWNER_ADDED_NOTIFICATION,
+        NotificationSettingEventType.SEND_INCOMING_CALL_POLICY_OWNER_ADDED_NOTIFICATION,
+      ],
+    ),
+  ];
+
+  const otherResources: Array<SectionDef> = [
+    buildSection("Dashboards", "Notify me about dashboards I own.", [
+      NotificationSettingEventType.SEND_DASHBOARD_OWNER_ADDED_NOTIFICATION,
+    ]),
+    buildSection("Workflows", "Notify me about workflows I own.", [
+      NotificationSettingEventType.SEND_WORKFLOW_OWNER_ADDED_NOTIFICATION,
+    ]),
+    buildSection("Runbooks", "Notify me about runbooks I own.", [
+      NotificationSettingEventType.SEND_RUNBOOK_OWNER_ADDED_NOTIFICATION,
+    ]),
   ];
 
   const renderSections: (sections: Array<SectionDef>) => ReactElement = (
@@ -773,6 +908,10 @@ const Settings: FunctionComponent<PageComponentProps> = (): ReactElement => {
           {
             name: "On-Call",
             children: renderSections(onCall),
+          },
+          {
+            name: "Other Resources",
+            children: renderSections(otherResources),
           },
         ]}
         onTabChange={() => {}}

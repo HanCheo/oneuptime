@@ -17,6 +17,7 @@ import { processServerMonitorFromQueue } from "../ServerMonitorIngest/ProcessSer
 import { processIncomingRequestFromQueue } from "../IncomingRequestIngest/ProcessIncomingRequestIngest";
 import { processTelemetryMonitorEvaluationFromQueue } from "../../../Workers/Jobs/TelemetryMonitor/MonitorTelemetryMonitor";
 import { TelemetryRequest } from "Common/Server/Middleware/TelemetryIngest";
+import { IotFleetScopeCarrier } from "../../Utils/IotFleetScope";
 import logger from "Common/Server/Utils/Logger";
 import { QueueJob, QueueName } from "Common/Server/Infrastructure/Queue";
 import { runWithInsertDedup } from "Common/Server/Services/AnalyticsDatabaseService";
@@ -126,7 +127,8 @@ if (DisableQueueWorkers) {
                 projectId: new ObjectID(jobData.projectId!.toString()),
                 body,
                 headers: jobData.requestHeaders!,
-              } as TelemetryRequest;
+                allowedIotFleetNames: jobData.allowedIotFleetNames,
+              } as TelemetryRequest & IotFleetScopeCarrier;
 
               await OtelLogsIngestService.processLogsFromQueue(mockRequest);
               logger.debug(
@@ -141,7 +143,8 @@ if (DisableQueueWorkers) {
                 projectId: new ObjectID(jobData.projectId!.toString()),
                 body,
                 headers: jobData.requestHeaders!,
-              } as TelemetryRequest;
+                allowedIotFleetNames: jobData.allowedIotFleetNames,
+              } as TelemetryRequest & IotFleetScopeCarrier;
 
               await OtelTracesIngestService.processTracesFromQueue(mockRequest);
               logger.debug(
@@ -156,7 +159,8 @@ if (DisableQueueWorkers) {
                 projectId: new ObjectID(jobData.projectId!.toString()),
                 body,
                 headers: jobData.requestHeaders!,
-              } as TelemetryRequest;
+                allowedIotFleetNames: jobData.allowedIotFleetNames,
+              } as TelemetryRequest & IotFleetScopeCarrier;
 
               await OtelMetricsIngestService.processMetricsFromQueue(
                 mockRequest,
@@ -173,7 +177,8 @@ if (DisableQueueWorkers) {
                 projectId: new ObjectID(jobData.projectId!.toString()),
                 body,
                 headers: jobData.requestHeaders!,
-              } as TelemetryRequest;
+                allowedIotFleetNames: jobData.allowedIotFleetNames,
+              } as TelemetryRequest & IotFleetScopeCarrier;
 
               await OtelProfilesIngestService.processProfilesFromQueue(
                 mockRequest,
@@ -189,7 +194,8 @@ if (DisableQueueWorkers) {
                 projectId: new ObjectID(jobData.projectId!.toString()),
                 body: jobData.requestBody!,
                 headers: jobData.requestHeaders!,
-              } as TelemetryRequest;
+                allowedIotFleetNames: jobData.allowedIotFleetNames,
+              } as TelemetryRequest & IotFleetScopeCarrier;
 
               await SyslogIngestService.processSyslogFromQueue(mockRequest);
               logger.debug(
@@ -203,7 +209,8 @@ if (DisableQueueWorkers) {
                 projectId: new ObjectID(jobData.projectId!.toString()),
                 body: jobData.requestBody!,
                 headers: jobData.requestHeaders!,
-              } as TelemetryRequest;
+                allowedIotFleetNames: jobData.allowedIotFleetNames,
+              } as TelemetryRequest & IotFleetScopeCarrier;
 
               await FluentLogsIngestService.processFluentLogsFromQueue(
                 mockRequest,
