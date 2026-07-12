@@ -23,7 +23,6 @@ import logger from "Common/Server/Utils/Logger";
 import Response from "Common/Server/Utils/Response";
 import OneUptimeDate from "Common/Types/Date";
 import BadDataException from "Common/Types/Exception/BadDataException";
-import PaymentRequiredException from "Common/Types/Exception/PaymentRequiredException";
 import { JSONArray, JSONObject, JSONValue } from "Common/Types/JSON";
 import {
   getClickhouseClusterName,
@@ -2708,8 +2707,8 @@ const TELEMETRY_INGESTION_TABLES: Array<{
  * (e.g. an instance that only ingests logs) degrades gracefully. Alongside the
  * counts it reports each table's total ACTUAL (uncompressed) data volume read
  * from system.parts metadata — the real data size, not the compressed
- * bytes_on_disk. No row data is read — only counts and size metadata. Enterprise
- * Edition + master-admin gated at the route.
+ * bytes_on_disk. No row data is read — only counts and size metadata. Master
+ * admin only, matching the rest of the instance health diagnostics.
  */
 async function getClickhouseTelemetryIngestion(): Promise<JSONObject> {
   const result: JSONObject = {
@@ -3413,8 +3412,7 @@ router.get(
  * Telemetry ingestion rate for the dashboard: how many log / metric / trace rows
  * landed in ClickHouse over the last minute, hour and day, so an operator can
  * see the live ingestion throughput and spot a stalled or flooding pipeline.
- * Enterprise Edition + master-admin only, like the ClickHouse cluster endpoint
- * beside it. Counts only — no telemetry row data leaves the process.
+ * Master-admin only. Counts only — no telemetry row data leaves the process.
  */
 router.get(
   "/clickhouse-telemetry-ingestion",
@@ -3425,13 +3423,6 @@ router.get(
     next: NextFunction,
   ): Promise<void> => {
     try {
-      if (!IsEnterpriseEdition) {
-        throw new PaymentRequiredException(
-          "The OneUptime Health dashboard is only available on the OneUptime Enterprise Edition. " +
-            "Please switch to the Enterprise Edition build to enable this feature. " +
-            "See https://oneuptime.com/enterprise/overview for details.",
-        );
-      }
 
       const data: JSONObject = await getClickhouseTelemetryIngestion();
       return Response.sendJsonObjectResponse(req, res, data);
