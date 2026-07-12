@@ -68,7 +68,8 @@ export const writeServiceTelemetryScopeToUrl: (
   Navigation.setQueryString({
     [SERVICE_ENVIRONMENT_QUERY_PARAM]:
       normalizeServiceEnvironment(scope.environment) || null,
-    [SERVICE_VERSION_QUERY_PARAM]: normalizeServiceVersion(scope.version) || null,
+    [SERVICE_VERSION_QUERY_PARAM]:
+      normalizeServiceVersion(scope.version) || null,
   });
 };
 

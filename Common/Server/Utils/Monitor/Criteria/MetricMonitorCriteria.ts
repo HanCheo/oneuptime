@@ -872,6 +872,16 @@ export default class MetricMonitorCriteria {
       return noBreach();
     }
 
+    const baselineAttributes: Record<string, string> = {};
+    if (input.seriesLabels) {
+      for (const key of Object.keys(input.seriesLabels)) {
+        const value: unknown = input.seriesLabels[key];
+        if (value !== undefined && value !== null && value !== "") {
+          baselineAttributes[key] = String(value);
+        }
+      }
+    }
+
     const baselineByHour: Map<number, BaselineSummary> = new Map();
     for (const hour of hoursInWindow) {
       const baseline: BaselineSummary | null =
@@ -881,6 +891,11 @@ export default class MetricMonitorCriteria {
           hourOfWeek: hour,
           windowDays,
           minSamples,
+          aggregationType: metricContext.aggregationType || undefined,
+          attributes:
+            Object.keys(baselineAttributes).length > 0
+              ? baselineAttributes
+              : undefined,
         });
       if (baseline && baseline.isReliable) {
         baselineByHour.set(hour, baseline);

@@ -18,16 +18,13 @@ describe("ProjectTelemetryScopeAttributePickerUtils", () => {
         123,
         "resource.service.version",
       ]),
-    ).toEqual([
-      "resource.deployment.environment",
-      "resource.service.version",
-    ]);
+    ).toEqual(["resource.deployment.environment", "resource.service.version"]);
   });
 
   test("falls back to default keys when no custom keys are selected", () => {
-    expect(getEffectiveAttributeKeys([], DEFAULT_SERVICE_SCOPE_ATTRIBUTE_KEYS)).toEqual(
-      DEFAULT_SERVICE_SCOPE_ATTRIBUTE_KEYS,
-    );
+    expect(
+      getEffectiveAttributeKeys([], DEFAULT_SERVICE_SCOPE_ATTRIBUTE_KEYS),
+    ).toEqual(DEFAULT_SERVICE_SCOPE_ATTRIBUTE_KEYS);
     expect(
       getEffectiveAttributeKeys(
         ["resource.service.version", "resource.service.version"],

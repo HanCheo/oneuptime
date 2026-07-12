@@ -2427,6 +2427,63 @@ export class MetricService extends AnalyticsDatabaseService<Metric> {
     });
     attributeMapStatement.append(SQL`) AS attributes`);
 
+    if (aggregateBy.aggregationType === AggregationType.Increase) {
+      const statement: Statement = SQL``;
+      statement.append(
+        `SELECT sum(__increase) as ${aggregationColumn}, ${aggregationTimestampColumn}, `,
+      );
+      statement.append(attributeMapStatement);
+      statement.append(SQL` FROM (`);
+      statement
+        .append(
+          `SELECT date_trunc('${aggregationInterval}', toStartOfInterval(${aggregationTimestampColumn}, INTERVAL 1 ${aggregationInterval})) as ${aggregationTimestampColumn}`,
+        )
+        .append(attributeSelectStatement)
+        .append(
+          `, greatest(max(toFloat64(coalesce(${aggregationColumn}, sum, 0))) - min(toFloat64(coalesce(${aggregationColumn}, sum, 0))), 0) AS __increase`,
+        );
+      statement.append(
+        ` FROM ${databaseName}.${this.model.tableName} WHERE TRUE `,
+      );
+      statement.append(whereStatement);
+      statement.append(this.getRetentionReadFilter());
+      statement
+        .append(SQL` GROUP BY `)
+        .append(`${aggregationTimestampColumn}`)
+        .append(SQL`, `)
+        .append(attributeGroupByStatement)
+        .append(
+          SQL`, cityHash64(toString(primaryEntityId), toString(attributes))`,
+        );
+      statement.append(SQL`) `);
+      statement
+        .append(SQL` GROUP BY `)
+        .append(`${aggregationTimestampColumn}`)
+        .append(SQL`, `)
+        .append(attributeGroupByStatement);
+      statement.append(SQL` ORDER BY `).append(sortStatement);
+      statement.append(
+        SQL` LIMIT ${{
+          value: Number(aggregateBy.limit),
+          type: TableColumnType.Number,
+        }}`,
+      );
+      statement.append(
+        SQL` OFFSET ${{
+          value: Number(aggregateBy.skip),
+          type: TableColumnType.Number,
+        }} `,
+      );
+      statement.append(
+        ` SETTINGS optimize_aggregation_in_order=1, optimize_move_to_prewhere=1, max_threads=4`,
+      );
+
+      return {
+        statement,
+        columns: [aggregationColumn, aggregationTimestampColumn, "attributes"],
+      };
+    }
+
     const statement: Statement = SQL``;
 
     if (percentileLevel !== null) {

@@ -797,6 +797,10 @@ const MonitorView: FunctionComponent<PageComponentProps> = (): ReactElement => {
                 monitor.monitorSteps.data?.monitorStepsInstanceArray[0]?.data
                   ?.metricMonitor
               }
+              monitorCriteria={
+                monitor.monitorSteps.data?.monitorStepsInstanceArray[0]?.data
+                  ?.monitorCriteria
+              }
             />
           </div>
         )}

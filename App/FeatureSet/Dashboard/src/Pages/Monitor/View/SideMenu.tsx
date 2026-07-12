@@ -32,6 +32,9 @@ const DashboardSideMenu: FunctionComponent<ComponentProps> = (
     props.monitorType,
   );
 
+  const hasMonitoringInterval: boolean =
+    MonitorTypeHelper.doesMonitorTypeHaveInterval(props.monitorType);
+
   // Overview section items
   const overviewItems: SideMenuItemProps[] = [
     {
@@ -145,7 +148,7 @@ const DashboardSideMenu: FunctionComponent<ComponentProps> = (
     });
   }
 
-  if (isProbeableMonitor) {
+  if (hasMonitoringInterval) {
     configurationItems.push({
       link: {
         title: "Interval",
@@ -156,7 +159,9 @@ const DashboardSideMenu: FunctionComponent<ComponentProps> = (
       },
       icon: IconProp.Clock,
     });
+  }
 
+  if (isProbeableMonitor) {
     configurationItems.push({
       link: {
         title: "Probes",

@@ -24,7 +24,6 @@ const EnvironmentSelector: FunctionComponent<ComponentProps> = (
     return a.localeCompare(b);
   });
 
-
   return (
     <div className="flex min-w-0 flex-col gap-1">
       <label

@@ -394,7 +394,6 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
       initialRange,
       initialUrlState?.facetFilters || new Map(),
     );
-
   });
   const [page, setPage] = useState<number>(initialUrlState?.page || 1);
   const [pageSize, setPageSize] = useState<number>(
@@ -1310,7 +1309,6 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
         timeRange,
         facets,
       );
-
     },
     [baseLogQuery, timeRange],
   );

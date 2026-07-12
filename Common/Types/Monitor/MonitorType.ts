@@ -486,7 +486,10 @@ export class MonitorTypeHelper {
   }
 
   public static doesMonitorTypeHaveInterval(monitorType: MonitorType): boolean {
-    return this.isProbableMonitor(monitorType);
+    return (
+      this.isProbableMonitor(monitorType) ||
+      this.isTelemetryMonitor(monitorType)
+    );
   }
 
   public static doesMonitorTypeHaveCriteria(monitorType: MonitorType): boolean {

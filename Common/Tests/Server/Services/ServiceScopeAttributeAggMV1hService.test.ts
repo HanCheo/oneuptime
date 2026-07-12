@@ -1,7 +1,5 @@
 import { describe, expect, test } from "@jest/globals";
-import {
-  ServiceScopeAttributeAggMV1hService,
-} from "../../../Server/Services/ServiceScopeAttributeAggMV1hService";
+import { ServiceScopeAttributeAggMV1hService } from "../../../Server/Services/ServiceScopeAttributeAggMV1hService";
 import { Statement } from "../../../Server/Utils/AnalyticsDatabase/Statement";
 import ObjectID from "../../../Types/ObjectID";
 
@@ -28,9 +26,15 @@ describe("ServiceScopeAttributeAggMV1hService statements", () => {
       limit: 25,
     });
 
-    expect(statement.query).toContain("uniqExact(primaryEntityId) AS activeServiceCount");
-    expect(statement.query).toContain("uniqExact(attributeValue) AS distinctValueCount");
-    expect(statement.query).toContain("countMerge(valueCountState) AS sampleCount");
+    expect(statement.query).toContain(
+      "uniqExact(primaryEntityId) AS activeServiceCount",
+    );
+    expect(statement.query).toContain(
+      "uniqExact(attributeValue) AS distinctValueCount",
+    );
+    expect(statement.query).toContain(
+      "countMerge(valueCountState) AS sampleCount",
+    );
     expect(statement.query).toContain("GROUP BY attributeKey");
     expect(statement.query).toContain("attributeKey IN (");
     expect(statement.query).toContain("LIMIT");
@@ -63,6 +67,8 @@ describe("ServiceScopeAttributeAggMV1hService statements", () => {
     );
     expect(statement.query).toContain("WHERE projectId =");
     expect(statement.query).toContain("bucketTime >= toDateTime('");
-    expect(Object.values(statement.query_params)).toContain(projectId.toString());
+    expect(Object.values(statement.query_params)).toContain(
+      projectId.toString(),
+    );
   });
 });

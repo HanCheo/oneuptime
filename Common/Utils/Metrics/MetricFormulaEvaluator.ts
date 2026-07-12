@@ -36,6 +36,12 @@ interface Token {
   type: TokenType;
   value: string;
 }
+interface FormulaEvaluationBucket {
+  timestamp: string;
+  dimensionKey: string;
+  dimensions: Record<string, AggregatedModel[string]>;
+  values: Record<string, number>;
+}
 
 type UnaryOperator = "u-" | "u+";
 type BinaryOperator = "+" | "-" | "*" | "/" | "%" | "^";
@@ -237,6 +243,7 @@ export default class MetricFormulaEvaluator {
           groupAttributes: groupLabels,
         }),
       );
+
     }
 
     return { data: resultData };
@@ -565,17 +572,69 @@ export default class MetricFormulaEvaluator {
         const timestampKey: string = MetricFormulaEvaluator.normalizeTimestamp(
           sample.timestamp,
         );
+        const dimensions: Record<string, AggregatedModel[string]> =
+          MetricFormulaEvaluator.extractPointDimensions(sample);
+        const dimensionKey: string =
+          MetricFormulaEvaluator.stableStringify(dimensions);
+        const bucketKey: string = `${timestampKey}\u0000${dimensionKey}`;
 
-        if (!index.has(timestampKey)) {
-          index.set(timestampKey, {});
+        if (!index.has(bucketKey)) {
+          index.set(bucketKey, {
+            timestamp: timestampKey,
+            dimensionKey,
+            dimensions,
+            values: {},
+          });
         }
 
-        const bucket: Record<string, number> = index.get(timestampKey) || {};
-        bucket[variable] = sample.value;
+        const bucket: FormulaEvaluationBucket = index.get(bucketKey)!;
+        bucket.values[variable] = sample.value;
       }
     }
 
     return index;
+  }
+
+  private static extractPointDimensions(
+    sample: AggregatedModel,
+  ): Record<string, AggregatedModel[string]> {
+    const dimensions: Record<string, AggregatedModel[string]> = {};
+
+    for (const key of Object.keys(sample)) {
+      if (key === "timestamp" || key === "value") {
+        continue;
+      }
+      dimensions[key] = sample[key];
+    }
+
+    return dimensions;
+  }
+
+  private static stableStringify(value: unknown): string {
+    if (value === null || typeof value !== "object") {
+      return JSON.stringify(value);
+    }
+
+    if (Array.isArray(value)) {
+      return `[${value
+        .map((item: unknown) => {
+          return MetricFormulaEvaluator.stableStringify(item);
+        })
+        .join(",")}]`;
+    }
+
+    const objectValue: Record<string, unknown> = value as Record<
+      string,
+      unknown
+    >;
+    return `{${Object.keys(objectValue)
+      .sort()
+      .map((key: string) => {
+        return `${JSON.stringify(key)}:${MetricFormulaEvaluator.stableStringify(
+          objectValue[key],
+        )}`;
+      })
+      .join(",")}}`;
   }
 
   private static normalizeTimestamp(timestamp: Date | string): string {

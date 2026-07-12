@@ -67,16 +67,12 @@ describe("Service telemetry scope helpers", () => {
           version: "1.2.3",
         },
       ).toString(),
-    ).toBe(
-      "/dashboard/service/123/logs?foo=bar&env=production&version=1.2.3",
-    );
+    ).toBe("/dashboard/service/123/logs?foo=bar&env=production&version=1.2.3");
     expect(
       withServiceTelemetryScopeRoute(new Route("/dashboard/service/123/logs"), {
         environment: "staging us",
         version: "build 42",
       }).toString(),
-    ).toBe(
-      "/dashboard/service/123/logs?env=staging%20us&version=build%2042",
-    );
+    ).toBe("/dashboard/service/123/logs?env=staging%20us&version=build%2042");
   });
 });

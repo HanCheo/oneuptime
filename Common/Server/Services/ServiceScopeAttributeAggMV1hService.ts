@@ -26,7 +26,6 @@ export interface ServiceScopeAttributeKeySummaryRow {
   lastSeenBucket: string;
 }
 
-
 /**
  * Read-side service for the generic service-scope attribute rollup MV target
  * table. Registration in AnalyticsServices makes boot-time schema sync create
@@ -37,7 +36,6 @@ export class ServiceScopeAttributeAggMV1hService extends AnalyticsDatabaseServic
     getClickhouseTelemetryDistributedTableName(
       AnalyticsTableName.ServiceScopeAttributeAggMV1h,
     );
-
 
   private formatDateTime(d: Date): string {
     return new Date(d).toISOString().replace("T", " ").substring(0, 19);
@@ -152,8 +150,14 @@ export class ServiceScopeAttributeAggMV1hService extends AnalyticsDatabaseServic
     );
 
     const attributeKeys: Array<string> = Array.from(
-      new Set((data.attributeKeys || []).map((key: string): string => key.trim())),
-    ).filter((key: string): boolean => Boolean(key));
+      new Set(
+        (data.attributeKeys || []).map((key: string): string => {
+          return key.trim();
+        }),
+      ),
+    ).filter((key: string): boolean => {
+      return Boolean(key);
+    });
 
     if (attributeKeys.length > 0) {
       statement.append(` AND attributeKey IN (`);

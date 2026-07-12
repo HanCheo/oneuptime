@@ -824,16 +824,27 @@ describe("Concrete anchors (absolute expected on-call user)", () => {
       expect(firstTitleAt(layer, evening)).toBe(nextByEveningDay[day]);
       expect(multiLayerFirstTitle(layer, evening)).toBe(nextByEveningDay[day]);
     }
-    // And inside a covered window the CURRENT user is that day's user.
-    expect(
-      firstTitleAt(
-        layer,
-        OneUptimeDate.addRemoveHours(
-          OneUptimeDate.addRemoveDays(MON_JAN6, 1),
-          12,
-        ),
+    /*
+     * And inside the second covered window the CURRENT user is B. Pick the
+     * midpoint from the actual expansion instead of hardcoding a UTC noon:
+     * timezone: undefined means legacy local time, so "12:00Z" may be outside
+     * a local 09:00-17:00 restriction on non-UTC test hosts.
+     */
+    const full: CalendarEvent[] = fullExpand(
+      layer,
+      MON_JAN6,
+      OneUptimeDate.addRemoveDays(MON_JAN6, 3),
+    );
+    const secondCoveredWindow: CalendarEvent = full[1]!;
+    const insideSecondWindow: Date = new Date(
+      Math.floor(
+        (secondCoveredWindow.start.getTime() +
+          secondCoveredWindow.end.getTime()) /
+          2,
       ),
-    ).toBe("B");
+    );
+    expect(secondCoveredWindow.title).toBe("B");
+    expect(firstTitleAt(layer, insideSecondWindow)).toBe("B");
   });
 
   test("weekly Mon-Fri x1 [A,B]: weekend gap resolves next Monday's rotated user", () => {

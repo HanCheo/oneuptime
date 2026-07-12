@@ -24,7 +24,6 @@ const VersionSelector: FunctionComponent<ComponentProps> = (
     return a.localeCompare(b, undefined, { numeric: true });
   });
 
-
   return (
     <div className="flex min-w-0 flex-col gap-1">
       <label

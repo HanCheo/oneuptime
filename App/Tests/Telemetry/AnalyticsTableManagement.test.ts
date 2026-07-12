@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
-
-
 type MockAnalyticsService = {
   model: {
     tableName: string;
@@ -86,7 +84,9 @@ const makeService = (options: ServiceOptions = {}): MockAnalyticsService => {
     return {
       json: async () => {
         return {
-          data: createTableQuery ? [{ create_table_query: createTableQuery }] : [],
+          data: createTableQuery
+            ? [{ create_table_query: createTableQuery }]
+            : [],
         };
       },
     };

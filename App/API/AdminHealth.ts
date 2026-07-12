@@ -23,6 +23,7 @@ import logger from "Common/Server/Utils/Logger";
 import Response from "Common/Server/Utils/Response";
 import OneUptimeDate from "Common/Types/Date";
 import BadDataException from "Common/Types/Exception/BadDataException";
+import PaymentRequiredException from "Common/Types/Exception/PaymentRequiredException";
 import { JSONArray, JSONObject, JSONValue } from "Common/Types/JSON";
 import {
   getClickhouseClusterName,
@@ -3273,7 +3274,6 @@ async function getDiagnosticLogs(): Promise<JSONObject> {
   };
 }
 
-
 router.get(
   "/overview",
   MasterAdminAuthorization.isAuthorizedMasterAdminOrMasterApiKeyMiddleware,
@@ -3637,7 +3637,6 @@ const QUERY_REDIS_TIMEOUT_MS: number = 15000;
 const QUERY_REDIS_MAX_COMMANDS: number = 50;
 
 type QueryEngine = "postgres" | "clickhouse" | "redis";
-
 
 
 // Clamp a requested row limit into [1, QUERY_MAX_ROWS]; default QUERY_DEFAULT_ROWS.
@@ -4396,7 +4395,6 @@ async function handleQueryRequest(
   next: NextFunction,
 ): Promise<void> {
   try {
-
     const body: JSONObject = (req.body || {}) as JSONObject;
     const query: string = (body["query"] ?? "").toString();
 

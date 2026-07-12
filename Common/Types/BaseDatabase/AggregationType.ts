@@ -4,6 +4,7 @@ enum AggregationType {
   Sum = "Sum",
   Avg = "Avg",
   Count = "Count",
+  Increase = "Increase",
   /*
    * Percentile aggregations. For Metric (the only model that carries
    * histogram bucket data), MetricService overrides the aggregate path to

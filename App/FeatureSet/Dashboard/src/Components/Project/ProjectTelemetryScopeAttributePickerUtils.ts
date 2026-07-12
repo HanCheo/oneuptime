@@ -32,73 +32,79 @@ export const DEFAULT_SERVICE_SCOPE_ATTRIBUTE_KEYS: Array<string> = [
 
 export const DEFAULT_SERVICE_SCOPE_ATTRIBUTE_LOOKBACK_HOURS: number = 24;
 
-export const RECOMMENDED_SERVICE_SCOPE_ATTRIBUTE_DEFINITIONS: Array<RecommendedServiceScopeAttributeDefinition> = [
-  {
-    attributeKey: "resource.deployment.environment",
-    label: "Environment",
-    selectorLabel: "Environment selector",
-    shortDescription: "Best first cut for separating prod, stg, qa, and dev traffic.",
-    recommendedReasons: [
-      "Usually low-cardinality, so the dropdown stays small and fast to scan.",
-      "The backend folds common environment aliases into one canonical selector.",
-      "Helpful for isolating prod-only incidents before drilling into a specific deployment.",
-    ],
-    queryAliases: [
-      "resource.deployment.environment",
-      "resource.deployment.environment.name",
-      "resource.oneuptime.label.env",
-    ],
-    isDefault: true,
-  },
-  {
-    attributeKey: "resource.service.version",
-    label: "Version",
-    selectorLabel: "Version selector",
-    shortDescription: "Best deployment scope for isolating a specific release, image, or canary.",
-    recommendedReasons: [
-      "Directly answers \"did this break after the deploy?\".",
-      "Pairs well with Environment to compare the same service across releases.",
-      "Worth indexing even when cardinality is higher because operators usually search one concrete build or digest.",
-    ],
-    isDefault: true,
-  },
-  {
-    attributeKey: "resource.k8s.namespace.name",
-    label: "Kubernetes namespace",
-    selectorLabel: "Namespace selector",
-    shortDescription: "Useful when one project spans many namespaces, tenants, or workload slices.",
-    recommendedReasons: [
-      "Adds a clean infrastructure boundary when multiple teams share a cluster.",
-      "Helps explain noisy service behavior caused by namespace-level config drift.",
-      "Often stays low enough cardinality to remain comfortable as a dropdown.",
-    ],
-    isDefault: false,
-  },
-  {
-    attributeKey: "resource.k8s.cluster.name",
-    label: "Kubernetes cluster",
-    selectorLabel: "Cluster selector",
-    shortDescription: "Useful when the same service runs in more than one cluster or region.",
-    recommendedReasons: [
-      "Separates cluster-specific regressions from app-level regressions.",
-      "Helpful for migration, failover, and multi-region comparisons.",
-      "Usually a compact selector because cluster counts stay small.",
-    ],
-    isDefault: false,
-  },
-  {
-    attributeKey: "service.namespace",
-    label: "Service namespace",
-    selectorLabel: "Service namespace selector",
-    shortDescription: "Useful when service names repeat across business domains or logical namespaces.",
-    recommendedReasons: [
-      "Prevents similarly named services from collapsing into one broad scope.",
-      "Helpful in shared platforms where naming is consistent but ownership differs.",
-      "Usually complements existing service naming without exploding value count.",
-    ],
-    isDefault: false,
-  },
-];
+export const RECOMMENDED_SERVICE_SCOPE_ATTRIBUTE_DEFINITIONS: Array<RecommendedServiceScopeAttributeDefinition> =
+  [
+    {
+      attributeKey: "resource.deployment.environment",
+      label: "Environment",
+      selectorLabel: "Environment selector",
+      shortDescription:
+        "Best first cut for separating prod, stg, qa, and dev traffic.",
+      recommendedReasons: [
+        "Usually low-cardinality, so the dropdown stays small and fast to scan.",
+        "The backend folds common environment aliases into one canonical selector.",
+        "Helpful for isolating prod-only incidents before drilling into a specific deployment.",
+      ],
+      queryAliases: [
+        "resource.deployment.environment",
+        "resource.deployment.environment.name",
+        "resource.oneuptime.label.env",
+      ],
+      isDefault: true,
+    },
+    {
+      attributeKey: "resource.service.version",
+      label: "Version",
+      selectorLabel: "Version selector",
+      shortDescription:
+        "Best deployment scope for isolating a specific release, image, or canary.",
+      recommendedReasons: [
+        'Directly answers "did this break after the deploy?".',
+        "Pairs well with Environment to compare the same service across releases.",
+        "Worth indexing even when cardinality is higher because operators usually search one concrete build or digest.",
+      ],
+      isDefault: true,
+    },
+    {
+      attributeKey: "resource.k8s.namespace.name",
+      label: "Kubernetes namespace",
+      selectorLabel: "Namespace selector",
+      shortDescription:
+        "Useful when one project spans many namespaces, tenants, or workload slices.",
+      recommendedReasons: [
+        "Adds a clean infrastructure boundary when multiple teams share a cluster.",
+        "Helps explain noisy service behavior caused by namespace-level config drift.",
+        "Often stays low enough cardinality to remain comfortable as a dropdown.",
+      ],
+      isDefault: false,
+    },
+    {
+      attributeKey: "resource.k8s.cluster.name",
+      label: "Kubernetes cluster",
+      selectorLabel: "Cluster selector",
+      shortDescription:
+        "Useful when the same service runs in more than one cluster or region.",
+      recommendedReasons: [
+        "Separates cluster-specific regressions from app-level regressions.",
+        "Helpful for migration, failover, and multi-region comparisons.",
+        "Usually a compact selector because cluster counts stay small.",
+      ],
+      isDefault: false,
+    },
+    {
+      attributeKey: "service.namespace",
+      label: "Service namespace",
+      selectorLabel: "Service namespace selector",
+      shortDescription:
+        "Useful when service names repeat across business domains or logical namespaces.",
+      recommendedReasons: [
+        "Prevents similarly named services from collapsing into one broad scope.",
+        "Helpful in shared platforms where naming is consistent but ownership differs.",
+        "Usually complements existing service naming without exploding value count.",
+      ],
+      isDefault: false,
+    },
+  ];
 
 export const selectedAttributeKeysFromFormValue = (
   value: unknown,
@@ -143,9 +149,7 @@ export const getRecommendedAttributeDefinition = (
   attributeKey: string,
 ): RecommendedServiceScopeAttributeDefinition | undefined => {
   return RECOMMENDED_SERVICE_SCOPE_ATTRIBUTE_DEFINITIONS.find(
-    (
-      definition: RecommendedServiceScopeAttributeDefinition,
-    ): boolean => {
+    (definition: RecommendedServiceScopeAttributeDefinition): boolean => {
       return definition.attributeKey === attributeKey;
     },
   );

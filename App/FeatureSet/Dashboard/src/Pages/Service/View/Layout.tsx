@@ -57,8 +57,8 @@ const ServiceViewLayout: FunctionComponent<
   const [hasResolvedScopeOptions, setHasResolvedScopeOptions] =
     useState<boolean>(false);
 
-  const writeScope: (environment: string, version: string) => void = useCallback(
-    (environment: string, version: string): void => {
+  const writeScope: (environment: string, version: string) => void =
+    useCallback((environment: string, version: string): void => {
       const nextEnvironment: string = normalizeServiceEnvironment(environment);
       const nextVersion: string = normalizeServiceVersion(version);
 
@@ -68,9 +68,7 @@ const ServiceViewLayout: FunctionComponent<
         environment: nextEnvironment,
         version: nextVersion,
       });
-    },
-    [],
-  );
+    }, []);
 
   const setSelectedEnvironment: (environment: string) => void = useCallback(
     (environment: string): void => {
@@ -107,7 +105,9 @@ const ServiceViewLayout: FunctionComponent<
       }
 
       const versions: Array<string> = [];
-      const serviceVersion: string = normalizeServiceVersion(item?.serviceVersion);
+      const serviceVersion: string = normalizeServiceVersion(
+        item?.serviceVersion,
+      );
 
       if (serviceVersion) {
         versions.push(serviceVersion);
@@ -127,9 +127,11 @@ const ServiceViewLayout: FunctionComponent<
         return [];
       }
 
-      return ((response.data["attributes"] || {}) as Record<string, Array<string>>)[
-        key
-      ] || [];
+      return (
+        ((response.data["attributes"] || {}) as Record<string, Array<string>>)[
+          key
+        ] || []
+      );
     };
 
     const normalizeDistinctValues: (
@@ -161,7 +163,8 @@ const ServiceViewLayout: FunctionComponent<
       environments: Array<string>;
       versions: Array<string>;
     }> => {
-      const requestHeaders: Record<string, string> = ModelAPI.getCommonHeaders();
+      const requestHeaders: Record<string, string> =
+        ModelAPI.getCommonHeaders();
       const now: Date = new Date();
       const lookbackStartTime: Date = new Date(
         now.getTime() - SERVICE_SCOPE_LOOKBACK_HOURS * 60 * 60 * 1000,
@@ -185,7 +188,10 @@ const ServiceViewLayout: FunctionComponent<
           response,
           "resource.deployment.environment",
         ),
-        versions: readScopeOptionsResponse(response, "resource.service.version"),
+        versions: readScopeOptionsResponse(
+          response,
+          "resource.service.version",
+        ),
       };
     };
 
@@ -196,7 +202,8 @@ const ServiceViewLayout: FunctionComponent<
       environments: Array<string>;
       versions: Array<string>;
     }> => {
-      const requestHeaders: Record<string, string> = ModelAPI.getCommonHeaders();
+      const requestHeaders: Record<string, string> =
+        ModelAPI.getCommonHeaders();
       const now: Date = new Date();
       const lookbackStartTime: Date = new Date(
         now.getTime() - SERVICE_SCOPE_LOOKBACK_HOURS * 60 * 60 * 1000,
@@ -274,11 +281,13 @@ const ServiceViewLayout: FunctionComponent<
     };
 
     const loadScopeMetadata: () => Promise<void> = async (): Promise<void> => {
-      let seededOptions: { environments: Array<string>; versions: Array<string> } =
-        {
-          environments: [],
-          versions: [],
-        };
+      let seededOptions: {
+        environments: Array<string>;
+        versions: Array<string>;
+      } = {
+        environments: [],
+        versions: [],
+      };
 
       try {
         const metadataItem: Service | null = await ModelAPI.getItem({
@@ -369,7 +378,8 @@ const ServiceViewLayout: FunctionComponent<
     );
 
     if (
-      nextSelectedEnvironment !== normalizeServiceEnvironment(selectedEnvironment) ||
+      nextSelectedEnvironment !==
+        normalizeServiceEnvironment(selectedEnvironment) ||
       nextSelectedVersion !== normalizeServiceVersion(selectedVersion)
     ) {
       writeScope(nextSelectedEnvironment, nextSelectedVersion);

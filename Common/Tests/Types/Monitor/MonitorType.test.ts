@@ -140,19 +140,37 @@ describe("MonitorTypeHelper", () => {
   });
 
   describe("doesMonitorTypeHaveInterval", () => {
-    test("mirrors isProbableMonitor", () => {
-      const types: Array<MonitorType> = [
-        MonitorType.API,
-        MonitorType.Manual,
-        MonitorType.Logs,
-        MonitorType.DNS,
-      ];
+    test.each([
+      MonitorType.API,
+      MonitorType.Website,
+      MonitorType.DNS,
+      MonitorType.Logs,
+      MonitorType.Metrics,
+      MonitorType.Traces,
+      MonitorType.Exceptions,
+      MonitorType.Profiles,
+      MonitorType.Kubernetes,
+      MonitorType.Docker,
+      MonitorType.Host,
+      MonitorType.Podman,
+      MonitorType.DockerSwarm,
+      MonitorType.Proxmox,
+      MonitorType.Ceph,
+      MonitorType.IoTDevice,
+    ])("returns true for %s", (monitorType: MonitorType) => {
+      expect(MonitorTypeHelper.doesMonitorTypeHaveInterval(monitorType)).toBe(
+        true,
+      );
+    });
 
-      for (const monitorType of types) {
-        expect(MonitorTypeHelper.doesMonitorTypeHaveInterval(monitorType)).toBe(
-          MonitorTypeHelper.isProbableMonitor(monitorType),
-        );
-      }
+    test.each([
+      MonitorType.Manual,
+      MonitorType.Server,
+      MonitorType.IncomingRequest,
+    ])("returns false for %s", (monitorType: MonitorType) => {
+      expect(MonitorTypeHelper.doesMonitorTypeHaveInterval(monitorType)).toBe(
+        false,
+      );
     });
   });
 

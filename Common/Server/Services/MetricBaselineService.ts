@@ -5,6 +5,7 @@ import logger, { LogAttributes } from "../Utils/Logger";
 import ObjectID from "../../Types/ObjectID";
 import AnalyticsTableName from "../../Types/AnalyticsDatabase/AnalyticsTableName";
 import { getClickhouseTelemetryDistributedTableName } from "../../Utils/Telemetry/Sharding";
+import AggregationType from "../../Types/BaseDatabase/AggregationType";
 
 /**
  * Result of a baseline lookup for a single (metric, service, hour-of-week)
@@ -85,6 +86,9 @@ export class MetricBaselineService extends AnalyticsDatabaseService<MetricBaseli
     getClickhouseTelemetryDistributedTableName(
       AnalyticsTableName.MetricBaselineHourly,
     );
+  private static readonly METRIC_TABLE_NAME: string =
+    getClickhouseTelemetryDistributedTableName(AnalyticsTableName.Metric);
+  private static readonly ATTRIBUTE_KEY_PATTERN: RegExp = /^[a-zA-Z0-9._:/-]+$/;
 
   /**
    * Default minimum samples per (hour-of-week) cell to call a baseline
@@ -143,6 +147,8 @@ export class MetricBaselineService extends AnalyticsDatabaseService<MetricBaseli
     hourOfWeek: number;
     windowDays?: number | undefined;
     minSamples?: number | undefined;
+    aggregationType?: AggregationType | undefined;
+    attributes?: Record<string, string> | undefined;
   }): Promise<BaselineSummary | null> {
     const windowDays: number = Math.min(
       input.windowDays || MetricBaselineService.DEFAULT_WINDOW_DAYS,
@@ -170,6 +176,45 @@ export class MetricBaselineService extends AnalyticsDatabaseService<MetricBaseli
         )}'`
       : "";
 
+    if (input.aggregationType === AggregationType.Increase) {
+      const attributeClauses: Array<string> = this.buildAttributeClauses(
+        input.attributes,
+      );
+      const sql: string = `
+        SELECT
+          count()                     AS sampleCount,
+          avg(__increase)             AS mean,
+          stddevPop(__increase)       AS stddev,
+          quantileBFloat16(0.5)(__increase) AS median,
+          quantileBFloat16(0.95)(__increase) AS p95,
+          min(__increase)             AS minObserved,
+          max(__increase)             AS maxObserved
+        FROM (
+          SELECT
+            toStartOfMinute(time) AS bucketTime,
+            cityHash64(toString(primaryEntityId), toString(attributes)) AS seriesId,
+            greatest(max(toFloat64(coalesce(value, sum, 0))) - min(toFloat64(coalesce(value, sum, 0))), 0) AS __increase
+          FROM ${MetricBaselineService.METRIC_TABLE_NAME}
+          WHERE projectId = '${projectIdStr}'
+            AND name = '${metricNameStr}'
+            ${primaryEntityIdClause}
+            ${attributeClauses.join("\n            ")}
+            AND toUInt8((toDayOfWeek(time, 1) - 1) * 24 + toHour(time)) = ${hour}
+            AND time >= now() - INTERVAL ${windowDays} DAY
+            AND retentionDate >= now()
+          GROUP BY bucketTime, seriesId
+        )
+      `;
+
+      return await this.parseBaselineSummary({
+        sql,
+        minSamples,
+        windowDays,
+        hour,
+        projectIdStr,
+        metricNameStr,
+      });
+    }
     const sql: string = `
       SELECT
         countMerge(sampleCountState)                AS sampleCount,
@@ -187,29 +232,31 @@ export class MetricBaselineService extends AnalyticsDatabaseService<MetricBaseli
         AND day >= today() - INTERVAL ${windowDays} DAY
     `;
 
+    return await this.parseBaselineSummary({
+      sql,
+      minSamples,
+      windowDays,
+      hour,
+      projectIdStr,
+      metricNameStr,
+    });
+  }
+
+  private async parseBaselineSummary(input: {
+    sql: string;
+    minSamples: number;
+    windowDays: number;
+    hour: number;
+    projectIdStr: string;
+    metricNameStr: string;
+  }): Promise<BaselineSummary | null> {
     const resultSet: {
       json: () => Promise<{
-        data: Array<{
-          sampleCount: number | string;
-          mean: number | string;
-          stddev: number | string;
-          median: number | string;
-          p95: number | string;
-          minObserved: number | string;
-          maxObserved: number | string;
-        }>;
+        data: Array<Record<string, number | string>>;
       }>;
-    } = (await this.executeQuery(sql)) as unknown as {
+    } = (await this.executeQuery(input.sql)) as unknown as {
       json: () => Promise<{
-        data: Array<{
-          sampleCount: number | string;
-          mean: number | string;
-          stddev: number | string;
-          median: number | string;
-          p95: number | string;
-          minObserved: number | string;
-          maxObserved: number | string;
-        }>;
+        data: Array<Record<string, number | string>>;
       }>;
     };
 
@@ -234,22 +281,21 @@ export class MetricBaselineService extends AnalyticsDatabaseService<MetricBaseli
       p95: this.toNumber(row["p95"]),
       minObserved: this.toNumber(row["minObserved"]),
       maxObserved: this.toNumber(row["maxObserved"]),
-      isReliable: sampleCount >= minSamples,
-      windowDays,
-      hourOfWeek: hour,
+      isReliable: sampleCount >= input.minSamples,
+      windowDays: input.windowDays,
+      hourOfWeek: input.hour,
     };
 
     logger.debug("MetricBaselineService.getBaseline", {
-      projectId: projectIdStr,
-      metricName: metricNameStr,
-      hourOfWeek: hour,
+      projectId: input.projectIdStr,
+      metricName: input.metricNameStr,
+      hourOfWeek: input.hour,
       sampleCount,
       isReliable: summary.isReliable,
     } as LogAttributes);
 
     return summary;
   }
-
   /**
    * Coverage probe: how much baseline data we have for a (metric,
    * entity) pair. Used by the form UI to show "Learning — N days of
@@ -432,6 +478,7 @@ export class MetricBaselineService extends AnalyticsDatabaseService<MetricBaseli
     sigmaCount: number;
     windowDays?: number | undefined;
     minSamples?: number | undefined;
+    attributes?: Record<string, string> | undefined;
   }): Promise<Array<BandPoint>> {
     const windowDays: number = Math.min(
       input.windowDays || MetricBaselineService.DEFAULT_WINDOW_DAYS,
@@ -446,7 +493,6 @@ export class MetricBaselineService extends AnalyticsDatabaseService<MetricBaseli
         : input.projectId,
     );
     const metricNameStr: string = this.escapeString(input.metricName);
-
     const primaryEntityIdClause: string = input.primaryEntityId
       ? `AND primaryEntityId = '${this.escapeString(
           input.primaryEntityId instanceof ObjectID
@@ -455,7 +501,28 @@ export class MetricBaselineService extends AnalyticsDatabaseService<MetricBaseli
         )}'`
       : "";
 
-    const sql: string = `
+    const attributeClauses: Array<string> = this.buildAttributeClauses(
+      input.attributes,
+    );
+
+    const sql: string =
+      attributeClauses.length > 0
+        ? `
+      SELECT
+        toUInt8((toDayOfWeek(time, 1) - 1) * 24 + toHour(time)) AS hourOfWeek,
+        count()                                  AS sampleCount,
+        avg(toFloat64(coalesce(value, sum, 0)))  AS mean,
+        stddevPop(toFloat64(coalesce(value, sum, 0))) AS stddev
+      FROM ${MetricBaselineService.METRIC_TABLE_NAME}
+      WHERE projectId = '${projectIdStr}'
+        AND name = '${metricNameStr}'
+        ${primaryEntityIdClause}
+        ${attributeClauses.join("\n        ")}
+        AND time >= now() - INTERVAL ${windowDays} DAY
+        AND retentionDate >= now()
+      GROUP BY hourOfWeek
+    `
+        : `
       SELECT
         hourOfWeek,
         countMerge(sampleCountState) AS sampleCount,
@@ -574,6 +641,34 @@ export class MetricBaselineService extends AnalyticsDatabaseService<MetricBaseli
     }
     const n: number = Number(v);
     return Number.isFinite(n) ? n : 0;
+  }
+
+  private buildAttributeClauses(
+    attributes: Record<string, string> | undefined,
+  ): Array<string> {
+    if (!attributes) {
+      return [];
+    }
+
+    const clauses: Array<string> = [];
+    for (const key of Object.keys(attributes).sort()) {
+      if (!MetricBaselineService.ATTRIBUTE_KEY_PATTERN.test(key)) {
+        continue;
+      }
+
+      const value: string | undefined = attributes[key];
+      if (value === undefined) {
+        continue;
+      }
+
+      clauses.push(
+        `AND attributes['${this.escapeString(key)}'] = '${this.escapeString(
+          value,
+        )}'`,
+      );
+    }
+
+    return clauses;
   }
 
   private escapeString(v: string): string {

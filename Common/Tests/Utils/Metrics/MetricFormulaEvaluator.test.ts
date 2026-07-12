@@ -41,19 +41,34 @@ const buildGroupedQueryConfig: BuildGroupedQueryConfigFunction = (
 };
 
 type BuildResultFunction = (
-  points: Array<{ timestamp: string; value: number }>,
+  points: Array<{
+    timestamp: string;
+    value: number;
+    attributes?: Record<string, string>;
+  }>,
 ) => AggregatedResult;
 
 const buildResult: BuildResultFunction = (
-  points: Array<{ timestamp: string; value: number }>,
+  points: Array<{
+    timestamp: string;
+    value: number;
+    attributes?: Record<string, string>;
+  }>,
 ): AggregatedResult => {
   return {
-    data: points.map((point: { timestamp: string; value: number }) => {
-      return {
-        timestamp: new Date(point.timestamp),
-        value: point.value,
-      };
-    }),
+    data: points.map(
+      (point: {
+        timestamp: string;
+        value: number;
+        attributes?: Record<string, string>;
+      }) => {
+        return {
+          timestamp: new Date(point.timestamp),
+          value: point.value,
+          ...(point.attributes ? { attributes: point.attributes } : {}),
+        };
+      },
+    ),
   };
 };
 
@@ -119,6 +134,218 @@ describe("MetricFormulaEvaluator", () => {
           return p.value;
         }),
       ).toEqual([11, 22]);
+    });
+
+    test("keeps grouped formula results separated by attributes", () => {
+      const queryConfigs: Array<MetricQueryConfigData> = [
+        buildQueryConfig("a"),
+        buildQueryConfig("b"),
+      ];
+      const results: Array<AggregatedResult> = [
+        buildResult([
+          {
+            timestamp: "2024-01-01T00:00:00.000Z",
+            value: 10,
+            attributes: { destination_service: "svc-a" },
+          },
+          {
+            timestamp: "2024-01-01T00:00:00.000Z",
+            value: 20,
+            attributes: { destination_service: "svc-b" },
+          },
+        ]),
+        buildResult([
+          {
+            timestamp: "2024-01-01T00:00:00.000Z",
+            value: 1,
+            attributes: { destination_service: "svc-a" },
+          },
+          {
+            timestamp: "2024-01-01T00:00:00.000Z",
+            value: 2,
+            attributes: { destination_service: "svc-b" },
+          },
+        ]),
+      ];
+
+      const output: AggregatedResult = MetricFormulaEvaluator.evaluateFormula({
+        formula: "a + b",
+        queryConfigs,
+        formulaConfigs: [],
+        results,
+      });
+
+      expect(
+        output.data.map((point: AggregatedResult["data"][number]) => {
+          return {
+            value: point.value,
+            attributes: point["attributes"],
+          };
+        }),
+      ).toEqual([
+        {
+          value: 11,
+          attributes: { destination_service: "svc-a" },
+        },
+        {
+          value: 22,
+          attributes: { destination_service: "svc-b" },
+        },
+      ]);
+    });
+
+    test("does not join formula variables across different groups", () => {
+      const queryConfigs: Array<MetricQueryConfigData> = [
+        buildQueryConfig("a"),
+        buildQueryConfig("b"),
+      ];
+      const results: Array<AggregatedResult> = [
+        buildResult([
+          {
+            timestamp: "2024-01-01T00:00:00.000Z",
+            value: 10,
+            attributes: { destination_service: "svc-a" },
+          },
+        ]),
+        buildResult([
+          {
+            timestamp: "2024-01-01T00:00:00.000Z",
+            value: 2,
+            attributes: { destination_service: "svc-b" },
+          },
+        ]),
+      ];
+
+      const output: AggregatedResult = MetricFormulaEvaluator.evaluateFormula({
+        formula: "a + b",
+        queryConfigs,
+        formulaConfigs: [],
+        results,
+      });
+
+      expect(output.data).toEqual([]);
+    });
+
+    test("matches grouped formula variables with stable attribute order", () => {
+      const queryConfigs: Array<MetricQueryConfigData> = [
+        buildQueryConfig("a"),
+        buildQueryConfig("b"),
+      ];
+      const results: Array<AggregatedResult> = [
+        buildResult([
+          {
+            timestamp: "2024-01-01T00:00:00.000Z",
+            value: 10,
+            attributes: {
+              destination_service: "svc-a",
+              cluster: "prd-seoul-eks",
+            },
+          },
+        ]),
+        buildResult([
+          {
+            timestamp: "2024-01-01T00:00:00.000Z",
+            value: 3,
+            attributes: {
+              cluster: "prd-seoul-eks",
+              destination_service: "svc-a",
+            },
+          },
+        ]),
+      ];
+
+      const output: AggregatedResult = MetricFormulaEvaluator.evaluateFormula({
+        formula: "a - b",
+        queryConfigs,
+        formulaConfigs: [],
+        results,
+      });
+
+      expect(output.data).toHaveLength(1);
+      expect(output.data[0]!.value).toBe(7);
+      expect(output.data[0]!["attributes"]).toEqual({
+        destination_service: "svc-a",
+        cluster: "prd-seoul-eks",
+      });
+    });
+
+    test("preserves groups when formulas reference grouped formulas", () => {
+      const queryConfigs: Array<MetricQueryConfigData> = [
+        buildQueryConfig("a"),
+        buildQueryConfig("b"),
+      ];
+
+      const formulaC: MetricFormulaConfigData = {
+        metricAliasData: {
+          metricVariable: "c",
+          title: "",
+          description: "",
+          legend: "",
+          legendUnit: "",
+        },
+        metricFormulaData: {
+          metricFormula: "a - b",
+        },
+      };
+
+      const rawResults: Array<AggregatedResult> = [
+        buildResult([
+          {
+            timestamp: "2024-01-01T00:00:00.000Z",
+            value: 10,
+            attributes: { destination_service: "svc-a" },
+          },
+          {
+            timestamp: "2024-01-01T00:00:00.000Z",
+            value: 20,
+            attributes: { destination_service: "svc-b" },
+          },
+        ]),
+        buildResult([
+          {
+            timestamp: "2024-01-01T00:00:00.000Z",
+            value: 1,
+            attributes: { destination_service: "svc-a" },
+          },
+          {
+            timestamp: "2024-01-01T00:00:00.000Z",
+            value: 2,
+            attributes: { destination_service: "svc-b" },
+          },
+        ]),
+      ];
+
+      const resultC: AggregatedResult = MetricFormulaEvaluator.evaluateFormula({
+        formula: formulaC.metricFormulaData.metricFormula,
+        queryConfigs,
+        formulaConfigs: [],
+        results: rawResults,
+      });
+
+      const output: AggregatedResult = MetricFormulaEvaluator.evaluateFormula({
+        formula: "c * 2",
+        queryConfigs,
+        formulaConfigs: [formulaC],
+        results: [...rawResults, resultC],
+      });
+
+      expect(
+        output.data.map((point: AggregatedResult["data"][number]) => {
+          return {
+            value: point.value,
+            attributes: point["attributes"],
+          };
+        }),
+      ).toEqual([
+        {
+          value: 18,
+          attributes: { destination_service: "svc-a" },
+        },
+        {
+          value: 36,
+          attributes: { destination_service: "svc-b" },
+        },
+      ]);
     });
 
     test("supports $ prefix, numeric literals and precedence", () => {

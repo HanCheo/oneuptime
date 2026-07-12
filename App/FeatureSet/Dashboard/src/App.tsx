@@ -61,83 +61,88 @@ function lazyRoute<T extends React.ComponentType<RoutesProps>>(
   return lazy(loader);
 }
 
-const InitRoutes = lazyRoute(() => {
+type LazyRoutesComponent = ReturnType<typeof lazyRoute>;
+
+const InitRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/InitRoutes");
 });
 
-const LogsRoutes = lazyRoute(() => {
+const LogsRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/LogsRoutes");
 });
-const MetricsRoutes = lazyRoute(() => {
+const MetricsRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/MetricsRoutes");
 });
-const TracesRoutes = lazyRoute(() => {
+const TracesRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/TracesRoutes");
 });
-const ExceptionsRoutes = lazyRoute(() => {
+const ExceptionsRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/ExceptionsRoutes");
 });
-const LlmRoutes = lazyRoute(() => {
+const LlmRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/LlmRoutes");
 });
-const EntitiesRoutes = lazyRoute(() => {
+const EntitiesRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/EntitiesRoutes");
 });
-const TopologyRoutes = lazyRoute(() => {
+const TopologyRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/TopologyRoutes");
 });
-const ProfilesRoutes = lazyRoute(() => {
+const ProfilesRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/ProfilesRoutes");
 });
-const IncidentsRoutes = lazyRoute(() => {
+const IncidentsRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/IncidentsRoutes");
 });
-const AlertsRoutes = lazyRoute(() => {
+const AlertsRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/AlertRoutes");
 });
-const ScheduledMaintenanceEventsRoutes = lazyRoute(() => {
+const ScheduledMaintenanceEventsRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/ScheduleMaintenanceEventsRoutes");
 });
-const OnCallDutyRoutes = lazyRoute(() => {
+const OnCallDutyRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/OnCallDutyRoutes");
 });
-const MonitorsRoutes = lazyRoute(() => {
+const MonitorsRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/MonitorsRoutes");
 });
-const MonitorGroupRoutes = lazyRoute(() => {
+const MonitorGroupRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/MonitorGroupRoutes");
 });
-const WorkflowRoutes = lazyRoute(() => {
+const WorkflowRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/WorkflowRoutes");
 });
-const RunbookRoutes = lazyRoute(() => {
+const RunbookRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/RunbookRoutes");
 });
-const StatusPagesRoutes = lazyRoute(() => {
+const StatusPagesRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/StatusPagesRoutes");
 });
-const DashboardRoutes = lazyRoute(() => {
+const DashboardRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/DashboardRoutes");
 });
-const ServiceRoutes = lazyRoute(() => {
+const ServiceRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/ServiceRoutes");
 });
-const KubernetesRoutes = lazyRoute(() => {
+const KubernetesRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/KubernetesRoutes");
 });
-const DockerRoutes = lazyRoute(() => {
+const DockerRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/DockerRoutes");
 });
-const PodmanRoutes = lazyRoute(() => {
+const NetworkDeviceRoutes: LazyRoutesComponent = lazyRoute(() => {
+  return import("./Routes/NetworkDeviceRoutes");
+});
+const PodmanRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/PodmanRoutes");
 });
-const ProxmoxRoutes = lazyRoute(() => {
+const ProxmoxRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/ProxmoxRoutes");
 });
-const IoTRoutes = lazyRoute(() => {
+const IoTRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/IoTRoutes");
 });
-const DockerSwarmRoutes = lazyRoute(() => {
+const DockerSwarmRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/DockerSwarmRoutes");
 });
 const AIInsightsRoutes = lazyRoute(() => {
@@ -146,34 +151,34 @@ const AIInsightsRoutes = lazyRoute(() => {
 const CephRoutes = lazyRoute(() => {
   return import("./Routes/CephRoutes");
 });
-const HostRoutes = lazyRoute(() => {
+const HostRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/HostRoutes");
 });
-const ServerlessRoutes = lazyRoute(() => {
+const ServerlessRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/ServerlessRoutes");
 });
-const CloudResourceRoutes = lazyRoute(() => {
+const CloudResourceRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/CloudResourceRoutes");
 });
-const RumApplicationRoutes = lazyRoute(() => {
+const RumApplicationRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/RumApplicationRoutes");
 });
-const CodeRepositoryRoutes = lazyRoute(() => {
+const CodeRepositoryRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/CodeRepositoryRoutes");
 });
-const AIAgentTasksRoutes = lazyRoute(() => {
+const AIAgentTasksRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/AIAgentTasksRoutes");
 });
-const SettingsRoutes = lazyRoute(() => {
+const SettingsRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/SettingsRoutes");
 });
-const UserSettingsRoutes = lazyRoute(() => {
+const UserSettingsRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/UserSettingsRoutes");
 });
-const UsersRoutes = lazyRoute(() => {
+const UsersRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/UsersRoutes");
 });
-const TeamsRoutes = lazyRoute(() => {
+const TeamsRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/TeamsRoutes");
 });
 

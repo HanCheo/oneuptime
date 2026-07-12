@@ -46,6 +46,9 @@ import MetricAggregationService, {
   FacetValue as MetricFacetValue,
   FacetRequest as MetricFacetRequest,
 } from "../Services/MetricAggregationService";
+import MetricBaselineService, {
+  BandPoint,
+} from "../Services/MetricBaselineService";
 import ProfileAggregationService, {
   FlamegraphRequest,
   FlamegraphResult,
@@ -66,6 +69,7 @@ import PprofEncoder, {
 } from "../Utils/Profile/PprofEncoder";
 import Profile from "../../Models/AnalyticsModels/Profile";
 import ProfileSample from "../../Models/AnalyticsModels/ProfileSample";
+import Project from "../../Models/DatabaseModels/Project";
 import ProfileService from "../Services/ProfileService";
 import ProfileSampleService from "../Services/ProfileSampleService";
 import SortOrder from "../../Types/BaseDatabase/SortOrder";
@@ -80,6 +84,7 @@ import ResourceFacetResolver, {
 import ProjectService from "../Services/ProjectService";
 import ServiceScopeAttributeAggMV1hService, {
   ServiceScopeAttributeKeySummaryRow,
+  ServiceScopeAttributeOptionRow,
 } from "../Services/ServiceScopeAttributeAggMV1hService";
 
 const router: ExpressRouter = Express.getRouter();
@@ -89,7 +94,10 @@ const DEFAULT_SERVICE_SCOPE_ATTRIBUTE_KEYS: Array<string> = [
   "resource.service.version",
 ];
 
-const SERVICE_SCOPE_ATTRIBUTE_QUERY_KEY_EXPANSIONS: Record<string, Array<string>> = {
+const SERVICE_SCOPE_ATTRIBUTE_QUERY_KEY_EXPANSIONS: Record<
+  string,
+  Array<string>
+> = {
   "resource.deployment.environment": [
     "resource.deployment.environment",
     "resource.deployment.environment.name",
@@ -250,10 +258,7 @@ router.post(
         ? OneUptimeDate.fromString(req.body["startTime"] as string)
         : new Date(
             endTime.getTime() -
-              SERVICE_SCOPE_ATTRIBUTE_CATALOG_LOOKBACK_HOURS *
-                60 *
-                60 *
-                1000,
+              SERVICE_SCOPE_ATTRIBUTE_CATALOG_LOOKBACK_HOURS * 60 * 60 * 1000,
           );
 
       const [observedAttributeKeys, keySummaries, activeServiceCount] =
@@ -321,7 +326,6 @@ router.post(
   },
 );
 
-
 router.post(
   "/telemetry/traces/service-scope-options",
   ...requireTraceReadAccess,
@@ -368,7 +372,7 @@ router.post(
           ? Number(req.body["limitPerKey"])
           : 100;
 
-      const project = await ProjectService.findOneById({
+      const project: Project | null = await ProjectService.findOneById({
         id: databaseProps.tenantId,
         select: {
           indexedServiceScopeAttributes: true,
@@ -397,25 +401,29 @@ router.post(
 
       const queryKeys: Array<string> = Array.from(
         new Set(
-          configuredAttributeKeys.flatMap((configuredKey: string): Array<string> => {
-            return (
-              SERVICE_SCOPE_ATTRIBUTE_QUERY_KEY_EXPANSIONS[configuredKey] || [
-                configuredKey,
-              ]
-            );
-          }),
+          configuredAttributeKeys.flatMap(
+            (configuredKey: string): Array<string> => {
+              return (
+                SERVICE_SCOPE_ATTRIBUTE_QUERY_KEY_EXPANSIONS[configuredKey] || [
+                  configuredKey,
+                ]
+              );
+            },
+          ),
         ),
       );
 
-      const optionRows =
-        await ServiceScopeAttributeAggMV1hService.getAttributeOptionsForService({
-          projectId: databaseProps.tenantId,
-          serviceId: serviceId,
-          startTime: startTime,
-          endTime: endTime,
-          attributeKeys: queryKeys,
-          limitPerKey: limitPerKey,
-        });
+      const optionRows: Array<ServiceScopeAttributeOptionRow> =
+        await ServiceScopeAttributeAggMV1hService.getAttributeOptionsForService(
+          {
+            projectId: databaseProps.tenantId,
+            serviceId: serviceId,
+            startTime: startTime,
+            endTime: endTime,
+            attributeKeys: queryKeys,
+            limitPerKey: limitPerKey,
+          },
+        );
 
       const attributes: Record<string, Array<string>> = {};
 
@@ -1026,8 +1034,6 @@ router.post(
     }
   },
 );
-
-
 
 // --- Trace Facets Endpoint ---
 
@@ -1655,6 +1661,92 @@ router.post(
 
       return Response.sendJsonObjectResponse(req, res, {
         facets: facets as unknown as JSONObject,
+      });
+    } catch (err: unknown) {
+      next(err);
+    }
+  },
+);
+
+router.post(
+  "/telemetry/metrics/anomaly-band",
+  ...requireMetricReadAccess,
+  async (
+    req: ExpressRequest,
+    res: ExpressResponse,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const databaseProps: DatabaseCommonInteractionProps =
+        await CommonAPI.getDatabaseCommonInteractionProps(req);
+
+      if (!databaseProps?.tenantId) {
+        return Response.sendErrorResponse(
+          req,
+          res,
+          new BadDataException("Invalid Project ID"),
+        );
+      }
+
+      const body: JSONObject = req.body as JSONObject;
+      const metricName: string = (body["metricName"] as string) || "";
+      if (!metricName.trim()) {
+        return Response.sendErrorResponse(
+          req,
+          res,
+          new BadDataException("Metric name is required."),
+        );
+      }
+
+      const startTime: Date = body["startTime"]
+        ? OneUptimeDate.fromString(body["startTime"] as string)
+        : OneUptimeDate.addRemoveHours(OneUptimeDate.getCurrentDate(), -1);
+      const endTime: Date = body["endTime"]
+        ? OneUptimeDate.fromString(body["endTime"] as string)
+        : OneUptimeDate.getCurrentDate();
+      const intervalMinutesRaw: number = Number(body["intervalMinutes"] || 1);
+      const sigmaCountRaw: number = Number(body["sigmaCount"] || 3);
+      const windowDaysRaw: number | undefined =
+        body["windowDays"] !== undefined
+          ? Number(body["windowDays"])
+          : undefined;
+      const minSamplesRaw: number | undefined =
+        body["minSamples"] !== undefined
+          ? Number(body["minSamples"])
+          : undefined;
+      const attributes: Record<string, string> | undefined = body["attributes"]
+        ? (body["attributes"] as Record<string, string>)
+        : undefined;
+
+      const band: Array<BandPoint> = await MetricBaselineService.getBandSeries({
+        projectId: databaseProps.tenantId,
+        metricName,
+        startTime,
+        endTime,
+        intervalMinutes: Number.isFinite(intervalMinutesRaw)
+          ? intervalMinutesRaw
+          : 1,
+        sigmaCount: Number.isFinite(sigmaCountRaw) ? sigmaCountRaw : 3,
+        windowDays:
+          windowDaysRaw !== undefined && Number.isFinite(windowDaysRaw)
+            ? windowDaysRaw
+            : undefined,
+        minSamples:
+          minSamplesRaw !== undefined && Number.isFinite(minSamplesRaw)
+            ? minSamplesRaw
+            : undefined,
+        attributes,
+      });
+
+      return Response.sendJsonObjectResponse(req, res, {
+        band: band.map((point: BandPoint) => {
+          return {
+            time: point.time.toISOString(),
+            mean: point.mean,
+            expectedHigh: point.expectedHigh,
+            expectedLow: point.expectedLow,
+          };
+        }),
       });
     } catch (err: unknown) {
       next(err);

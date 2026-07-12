@@ -305,6 +305,8 @@ function toAggregateSql(type: AggregationType): string {
       return "avg(value)";
     case AggregationType.Count:
       return "count()";
+    case AggregationType.Increase:
+      return "greatest(max(value) - min(value), 0)";
     case AggregationType.Max:
       return "max(value)";
     case AggregationType.Min:

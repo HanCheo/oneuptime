@@ -74,7 +74,6 @@ export default class RebuildMetricMinuteAggregateMaterializedView extends DataMi
       return;
     }
 
-
     const storagePolicy: string | undefined =
       getClickhouseColdTierStoragePolicy();
     const tableSettings: string = storagePolicy

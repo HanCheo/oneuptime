@@ -701,7 +701,6 @@ const ExceptionsViewer: FunctionComponent<ExceptionsViewerProps> = (
       dateRange.startValue,
       dateRange.endValue,
     );
-
   }, [
     props.primaryEntityId,
     props.environments,
@@ -1211,7 +1210,13 @@ const ExceptionsViewer: FunctionComponent<ExceptionsViewerProps> = (
       }
     }
     return [...base, ...activeFilters.map(resolveDisplay)];
-  }, [props.primaryEntityId, props.environments, props.releases, activeFilters, facetConfigs]);
+  }, [
+    props.primaryEntityId,
+    props.environments,
+    props.releases,
+    activeFilters,
+    facetConfigs,
+  ]);
 
   // Row click → navigate to exception detail
   const handleRowClick: (exception: TelemetryException) => void = useCallback(

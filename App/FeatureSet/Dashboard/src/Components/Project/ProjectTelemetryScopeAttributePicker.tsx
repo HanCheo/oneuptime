@@ -40,9 +40,9 @@ export interface ComponentProps {
   onChange: (keys: Array<string>) => void;
 }
 
-const ProjectTelemetryScopeAttributePicker: FunctionComponent<ComponentProps> = (
-  props: ComponentProps,
-): ReactElement => {
+const ProjectTelemetryScopeAttributePicker: FunctionComponent<
+  ComponentProps
+> = (props: ComponentProps): ReactElement => {
   const [catalog, setCatalog] =
     useState<ServiceScopeAttributeCatalogResponse | null>(null);
   const [isFallbackCatalog, setIsFallbackCatalog] = useState<boolean>(false);
@@ -97,7 +97,8 @@ const ProjectTelemetryScopeAttributePicker: FunctionComponent<ComponentProps> = 
         }
 
         const observedAttributes: Array<ServiceScopeAttributeCatalogEntry> = (
-          (catalogResponse.data["observedAttributes"] as Array<JSONObject>) || []
+          (catalogResponse.data["observedAttributes"] as Array<JSONObject>) ||
+          []
         ).map((entry: JSONObject): ServiceScopeAttributeCatalogEntry => {
           return {
             attributeKey: String(entry["attributeKey"] || ""),
@@ -163,11 +164,11 @@ const ProjectTelemetryScopeAttributePicker: FunctionComponent<ComponentProps> = 
 
           setCatalog(
             buildFallbackCatalog(
-              ((fallbackResponse.data["attributes"] || []) as Array<string>).filter(
-                (key: string): boolean => {
-                  return Boolean(key && key.trim());
-                },
-              ),
+              (
+                (fallbackResponse.data["attributes"] || []) as Array<string>
+              ).filter((key: string): boolean => {
+                return Boolean(key && key.trim());
+              }),
             ),
           );
           setIsFallbackCatalog(true);
@@ -229,7 +230,10 @@ const ProjectTelemetryScopeAttributePicker: FunctionComponent<ComponentProps> = 
       new Set(props.selectedAttributeKeys),
     )
       .filter((key: string): boolean => {
-        return !observedAttributeMap.has(key) && !getRecommendedAttributeDefinition(key);
+        return (
+          !observedAttributeMap.has(key) &&
+          !getRecommendedAttributeDefinition(key)
+        );
       })
       .sort((a: string, b: string): number => {
         return a.localeCompare(b);
@@ -277,7 +281,8 @@ const ProjectTelemetryScopeAttributePicker: FunctionComponent<ComponentProps> = 
           a: ServiceScopeAttributeCatalogEntry,
           b: ServiceScopeAttributeCatalogEntry,
         ): number => {
-          const sampleDiff: number = (b.sampleCount || 0) - (a.sampleCount || 0);
+          const sampleDiff: number =
+            (b.sampleCount || 0) - (a.sampleCount || 0);
 
           if (sampleDiff !== 0) {
             return sampleDiff;
@@ -343,14 +348,16 @@ const ProjectTelemetryScopeAttributePicker: FunctionComponent<ComponentProps> = 
   if (isLoading) {
     return (
       <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-4 text-sm text-gray-600">
-        Loading service scope recommendations and recent trace attribute metrics...
+        Loading service scope recommendations and recent trace attribute
+        metrics...
       </div>
     );
   }
 
   const lookbackHours: number =
     catalog?.lookbackHours || DEFAULT_SERVICE_SCOPE_ATTRIBUTE_LOOKBACK_HOURS;
-  const observedAttributeCount: number = catalog?.observedAttributes.length || 0;
+  const observedAttributeCount: number =
+    catalog?.observedAttributes.length || 0;
   const activeServiceCount: number = catalog?.activeServiceCount || 0;
   const selectedModeLabel: string =
     props.selectedAttributeKeys.length > 0 ? "Custom" : "Defaults";
@@ -365,8 +372,9 @@ const ProjectTelemetryScopeAttributePicker: FunctionComponent<ComponentProps> = 
 
       {isFallbackCatalog && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Using the legacy trace attribute catalog. Detailed coverage and value-count
-          metrics will appear here after the new catalog endpoint is deployed.
+          Using the legacy trace attribute catalog. Detailed coverage and
+          value-count metrics will appear here after the new catalog endpoint is
+          deployed.
         </div>
       )}
 
@@ -383,7 +391,9 @@ const ProjectTelemetryScopeAttributePicker: FunctionComponent<ComponentProps> = 
                     .map((key: string): string => {
                       return getAttributeDisplayLabel(key);
                     })
-                    .join(", ")}. Add more keys only when operators need another drilldown.`}
+                    .join(
+                      ", ",
+                    )}. Add more keys only when operators need another drilldown.`}
             </p>
           </div>
           <span className="inline-flex w-fit rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700">
@@ -416,7 +426,8 @@ const ProjectTelemetryScopeAttributePicker: FunctionComponent<ComponentProps> = 
               {activeServiceCount || "—"}
             </p>
             <p className="mt-1 text-xs text-gray-500">
-              Services seen in the last {lookbackHours}h of aggregated trace data.
+              Services seen in the last {lookbackHours}h of aggregated trace
+              data.
             </p>
           </div>
 
@@ -450,67 +461,101 @@ const ProjectTelemetryScopeAttributePicker: FunctionComponent<ComponentProps> = 
         <section className="rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm">
           <div className="flex items-start justify-between gap-3 border-b border-gray-100 pb-3">
             <div>
-              <h3 className="text-sm font-semibold text-gray-900">Current plan</h3>
+              <h3 className="text-sm font-semibold text-gray-900">
+                Current plan
+              </h3>
               <p className="mt-1 text-sm text-gray-600">
-                These keys are currently powering the fast service scope selectors.
+                These keys are currently powering the fast service scope
+                selectors.
               </p>
             </div>
             <span className="text-xs text-gray-500">
-              {props.selectedAttributeKeys.length > 0 ? "Custom selection" : "Default fallback"}
+              {props.selectedAttributeKeys.length > 0
+                ? "Custom selection"
+                : "Default fallback"}
             </span>
           </div>
 
           <div className="mt-4 flex flex-col gap-3">
-            {effectiveAttributeKeys.map((attributeKey: string): ReactElement => {
-              const definition = getRecommendedAttributeDefinition(attributeKey);
-              const entry: ServiceScopeAttributeCatalogEntry | undefined =
-                observedAttributeMap.get(attributeKey);
-              const reasons: Array<string> = [
-                ...(definition?.recommendedReasons || [
-                  "Custom keys are best when operators already think in this dimension during incident triage.",
-                ]),
-                ...getAttributeDynamicReasons(
-                  entry || {
-                    attributeKey,
-                    activeServiceCount: null,
-                    distinctValueCount: null,
-                    sampleCount: null,
-                    lastSeenBucket: null,
-                  },
-                  activeServiceCount,
-                  lookbackHours,
-                ),
-              ];
+            {effectiveAttributeKeys.map(
+              (attributeKey: string): ReactElement => {
+                const definition =
+                  getRecommendedAttributeDefinition(attributeKey);
+                const entry: ServiceScopeAttributeCatalogEntry | undefined =
+                  observedAttributeMap.get(attributeKey);
+                const reasons: Array<string> = [
+                  ...(definition?.recommendedReasons || [
+                    "Custom keys are best when operators already think in this dimension during incident triage.",
+                  ]),
+                  ...getAttributeDynamicReasons(
+                    entry || {
+                      attributeKey,
+                      activeServiceCount: null,
+                      distinctValueCount: null,
+                      sampleCount: null,
+                      lastSeenBucket: null,
+                    },
+                    activeServiceCount,
+                    lookbackHours,
+                  ),
+                ];
 
-              if (definition?.queryAliases?.length) {
-                reasons.splice(
-                  1,
-                  0,
-                  `Normalizes ${definition.queryAliases.length} common attribute aliases into one selector key.`,
-                );
-              }
+                if (definition?.queryAliases?.length) {
+                  reasons.splice(
+                    1,
+                    0,
+                    `Normalizes ${definition.queryAliases.length} common attribute aliases into one selector key.`,
+                  );
+                }
 
-              return (
-                <div
-                  key={attributeKey}
-                  className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-4"
-                >
-                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h4 className="text-sm font-semibold text-gray-900">
-                          {definition?.label || getAttributeDisplayLabel(attributeKey)}
-                        </h4>
-                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
-                          Active
-                        </span>
-                        {definition?.isDefault && props.selectedAttributeKeys.length === 0 && (
-                          <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700">
-                            Default
+                return (
+                  <div
+                    key={attributeKey}
+                    className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-4"
+                  >
+                    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className="text-sm font-semibold text-gray-900">
+                            {definition?.label ||
+                              getAttributeDisplayLabel(attributeKey)}
+                          </h4>
+                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                            Active
                           </span>
-                        )}
-                        <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[11px] font-medium text-gray-600">
-                          {getSelectorFitLabel(
+                          {definition?.isDefault &&
+                            props.selectedAttributeKeys.length === 0 && (
+                              <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700">
+                                Default
+                              </span>
+                            )}
+                          <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[11px] font-medium text-gray-600">
+                            {getSelectorFitLabel(
+                              entry || {
+                                attributeKey,
+                                activeServiceCount: null,
+                                distinctValueCount: null,
+                                sampleCount: null,
+                                lastSeenBucket: null,
+                              },
+                            )}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm text-gray-600">
+                          {definition?.shortDescription ||
+                            "Custom selector for service scope drilldowns."}
+                        </p>
+                        <p className="mt-1 font-mono text-xs text-gray-500">
+                          {attributeKey}
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 md:max-w-xs">
+                        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                          Expected impact
+                        </p>
+                        <p className="mt-1 font-medium text-gray-900">
+                          {getAttributeImpactSummary(
                             entry || {
                               attributeKey,
                               activeServiceCount: null,
@@ -518,97 +563,79 @@ const ProjectTelemetryScopeAttributePicker: FunctionComponent<ComponentProps> = 
                               sampleCount: null,
                               lastSeenBucket: null,
                             },
+                            activeServiceCount,
                           )}
-                        </span>
+                        </p>
                       </div>
-                      <p className="mt-1 text-sm text-gray-600">
-                        {definition?.shortDescription ||
-                          "Custom selector for service scope drilldowns."}
-                      </p>
-                      <p className="mt-1 font-mono text-xs text-gray-500">
-                        {attributeKey}
-                      </p>
                     </div>
 
-                    <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 md:max-w-xs">
-                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                        Expected impact
-                      </p>
-                      <p className="mt-1 font-medium text-gray-900">
-                        {getAttributeImpactSummary(
-                          entry || {
-                            attributeKey,
-                            activeServiceCount: null,
-                            distinctValueCount: null,
-                            sampleCount: null,
-                            lastSeenBucket: null,
-                          },
-                          activeServiceCount,
-                        )}
-                      </p>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                          Selector role
+                        </p>
+                        <p className="mt-1 text-sm font-medium text-gray-900">
+                          {definition?.selectorLabel || "Custom selector"}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                          Recent values
+                        </p>
+                        <p className="mt-1 text-sm font-medium text-gray-900">
+                          {entry?.distinctValueCount ?? "—"}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                          Services covered
+                        </p>
+                        <p className="mt-1 text-sm font-medium text-gray-900">
+                          {entry?.activeServiceCount !== null &&
+                          entry?.activeServiceCount !== undefined &&
+                          activeServiceCount > 0
+                            ? `${entry.activeServiceCount}/${activeServiceCount}`
+                            : "—"}
+                        </p>
+                      </div>
                     </div>
+
+                    <ul className="mt-4 space-y-2 text-sm text-gray-700">
+                      {reasons
+                        .slice(0, 5)
+                        .map((reason: string): ReactElement => {
+                          return (
+                            <li key={reason} className="flex gap-2">
+                              <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-500" />
+                              <span>{reason}</span>
+                            </li>
+                          );
+                        })}
+                    </ul>
                   </div>
-
-                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
-                      <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-                        Selector role
-                      </p>
-                      <p className="mt-1 text-sm font-medium text-gray-900">
-                        {definition?.selectorLabel || "Custom selector"}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
-                      <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-                        Recent values
-                      </p>
-                      <p className="mt-1 text-sm font-medium text-gray-900">
-                        {entry?.distinctValueCount ?? "—"}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
-                      <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-                        Services covered
-                      </p>
-                      <p className="mt-1 text-sm font-medium text-gray-900">
-                        {entry?.activeServiceCount !== null &&
-                        entry?.activeServiceCount !== undefined &&
-                        activeServiceCount > 0
-                          ? `${entry.activeServiceCount}/${activeServiceCount}`
-                          : "—"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <ul className="mt-4 space-y-2 text-sm text-gray-700">
-                    {reasons.slice(0, 5).map((reason: string): ReactElement => {
-                      return (
-                        <li key={reason} className="flex gap-2">
-                          <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-500" />
-                          <span>{reason}</span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              );
-            })}
+                );
+              },
+            )}
           </div>
         </section>
 
         <section className="rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm">
           <div className="border-b border-gray-100 pb-3">
-            <h3 className="text-sm font-semibold text-gray-900">Recommended next</h3>
+            <h3 className="text-sm font-semibold text-gray-900">
+              Recommended next
+            </h3>
             <p className="mt-1 text-sm text-gray-600">
-              These keys are usually the highest-leverage additions when operators
-              need another fast service scope.
+              These keys are usually the highest-leverage additions when
+              operators need another fast service scope.
             </p>
           </div>
 
           <div className="mt-4 flex flex-col gap-3">
             {RECOMMENDED_SERVICE_SCOPE_ATTRIBUTE_DEFINITIONS.filter(
               (definition) => {
-                return !effectiveAttributeKeys.includes(definition.attributeKey);
+                return !effectiveAttributeKeys.includes(
+                  definition.attributeKey,
+                );
               },
             ).map((definition): ReactElement => {
               const entry: ServiceScopeAttributeCatalogEntry | undefined =
@@ -705,9 +732,10 @@ const ProjectTelemetryScopeAttributePicker: FunctionComponent<ComponentProps> = 
             Browse the project trace catalog
           </h3>
           <p className="mt-1 text-sm text-gray-600">
-            Search across recommended keys and every trace attribute observed in the
-            project. Option descriptions summarize recent service coverage and value
-            count so you can judge whether a key will stay usable as a selector.
+            Search across recommended keys and every trace attribute observed in
+            the project. Option descriptions summarize recent service coverage
+            and value count so you can judge whether a key will stay usable as a
+            selector.
           </p>
         </div>
 
@@ -736,12 +764,14 @@ const ProjectTelemetryScopeAttributePicker: FunctionComponent<ComponentProps> = 
             </p>
             <p className="mt-1">
               Defaults currently resolve to {defaultAttributeKeys.length} key
-              {defaultAttributeKeys.length === 1 ? "" : "s"}: {defaultAttributeKeys
+              {defaultAttributeKeys.length === 1 ? "" : "s"}:{" "}
+              {defaultAttributeKeys
                 .map((key: string): string => {
                   return getAttributeDisplayLabel(key);
                 })
-                .join(", ")}. Add extra keys only when their drilldown value is worth
-              the additional selector surface area.
+                .join(", ")}
+              . Add extra keys only when their drilldown value is worth the
+              additional selector surface area.
             </p>
           </div>
         </div>

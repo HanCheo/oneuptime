@@ -320,6 +320,13 @@ export const sanitizeAttributeFilters: SanitizeAttributeFiltersFunction = (
   return Object.keys(result).length > 0 ? result : undefined;
 };
 
+export interface MetricAnomalyBandPoint {
+  time: Date;
+  mean: number;
+  expectedHigh: number;
+  expectedLow: number;
+}
+
 export default class MetricUtil {
   public static async fetchResults(data: {
     metricViewData: MetricViewData;
@@ -892,6 +899,60 @@ export default class MetricUtil {
         ? { telemetryAttributesError }
         : {}),
     };
+  }
+
+  public static async fetchAnomalyBand(data: {
+    metricName: string;
+    startAndEndDate: InBetween<Date>;
+    sigmaCount: number;
+    intervalMinutes: number;
+    windowDays?: number | undefined;
+    minSamples?: number | undefined;
+    attributes?: Record<string, string> | undefined;
+  }): Promise<Array<MetricAnomalyBandPoint>> {
+    if (getPublicDashboardContext()) {
+      return [];
+    }
+
+    const response: HTTPResponse<JSONObject> | HTTPErrorResponse =
+      await API.post({
+        url: URL.fromString(APP_API_URL.toString()).addRoute(
+          "/telemetry/metrics/anomaly-band",
+        ),
+        data: {
+          metricName: data.metricName,
+          startTime: (data.startAndEndDate.startValue as Date).toISOString(),
+          endTime: (data.startAndEndDate.endValue as Date).toISOString(),
+          sigmaCount: data.sigmaCount,
+          intervalMinutes: data.intervalMinutes,
+          ...(data.windowDays !== undefined
+            ? { windowDays: data.windowDays }
+            : {}),
+          ...(data.minSamples !== undefined
+            ? { minSamples: data.minSamples }
+            : {}),
+          ...(data.attributes ? { attributes: data.attributes } : {}),
+        },
+        headers: {
+          ...AnalyticsModelAPI.getCommonHeaders(),
+        },
+      });
+
+    if (response instanceof HTTPErrorResponse) {
+      throw response;
+    }
+
+    const rawBand: Array<JSONObject> = (response.data["band"] ||
+      []) as Array<JSONObject>;
+
+    return rawBand.map((point: JSONObject) => {
+      return {
+        time: OneUptimeDate.fromString(point["time"] as string),
+        mean: Number(point["mean"]),
+        expectedHigh: Number(point["expectedHigh"]),
+        expectedLow: Number(point["expectedLow"]),
+      };
+    });
   }
 
   public static async getTelemetryAttributes(data?: {

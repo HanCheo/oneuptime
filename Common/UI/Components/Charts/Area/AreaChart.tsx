@@ -179,7 +179,7 @@ const AreaChartElement: FunctionComponent<AreaInternalProps> = (
 
   return (
     <div
-      className="relative flex flex-1"
+      className="relative flex flex-1 min-h-80"
       style={props.heightInPx ? { height: `${props.heightInPx}px` } : undefined}
     >
       <AreaChart
