@@ -834,32 +834,31 @@ const MetricCharts: FunctionComponent<ComponentProps> = (
         queryConfig.metricQueryData.groupByAttributeKeys || [];
 
       const effectiveGetSeries:
-        | ((data: AggregatedModel) => ChartSeries)
-        | undefined = queryConfig.getSeries
-        ? queryConfig.getSeries
-        : groupByAttributeKeys.length > 0
-          ? (item: AggregatedModel): ChartSeries => {
-              const attributes: Record<string, unknown> =
-                ((item as unknown as Dictionary<unknown>)["attributes"] as
-                  | Record<string, unknown>
-                  | undefined) || {};
+        ((data: AggregatedModel) => ChartSeries) | undefined =
+        queryConfig.getSeries
+          ? queryConfig.getSeries
+          : groupByAttributeKeys.length > 0
+            ? (item: AggregatedModel): ChartSeries => {
+                const attributes: Record<string, unknown> =
+                  ((item as unknown as Dictionary<unknown>)["attributes"] as
+                    Record<string, unknown> | undefined) || {};
 
-              const parts: Array<string> = groupByAttributeKeys.map(
-                (key: string) => {
-                  const value: unknown = attributes[key];
-                  const displayValue: string =
-                    value === undefined || value === null || value === ""
-                      ? "(unset)"
-                      : String(value);
-                  return `${key}=${displayValue}`;
-                },
-              );
+                const parts: Array<string> = groupByAttributeKeys.map(
+                  (key: string) => {
+                    const value: unknown = attributes[key];
+                    const displayValue: string =
+                      value === undefined || value === null || value === ""
+                        ? "(unset)"
+                        : String(value);
+                    return `${key}=${displayValue}`;
+                  },
+                );
 
-              return {
-                title: parts.join(", "),
-              };
-            }
-          : undefined;
+                return {
+                  title: parts.join(", "),
+                };
+              }
+            : undefined;
 
       /*
        * Optional per-datapoint value transform (e.g. divide K8s CPU
@@ -1028,8 +1027,7 @@ const MetricCharts: FunctionComponent<ComponentProps> = (
       const metricAttributes: Dictionary<string> = {};
       const filterAttributes: Dictionary<unknown> | undefined = queryConfig
         .metricQueryData.filterData.attributes as
-        | Dictionary<unknown>
-        | undefined;
+        Dictionary<unknown> | undefined;
 
       if (filterAttributes) {
         for (const key of Object.keys(filterAttributes)) {
@@ -1299,6 +1297,99 @@ const MetricCharts: FunctionComponent<ComponentProps> = (
       charts.push(chart);
 
       index++;
+    }
+
+    if (
+      props.metricViewData.queryConfigs.length > 1 &&
+      (props.metricViewData.formulaConfigs || []).length === 0 &&
+      charts.length > 1 &&
+      charts.every((chart: Chart) => {
+        return chart.type === ChartType.LINE;
+      })
+    ) {
+      const combinedSeries: Array<SeriesPoint> = [];
+      const combinedColors: Array<ChartColorValue> = [];
+      const hasExplicitColors: boolean = charts.some((chart: Chart) => {
+        return Boolean(chart.props.colors && chart.props.colors.length > 0);
+      });
+      const seenSeriesNames: Set<string> = new Set<string>();
+      const referenceLines: Array<ChartReferenceLineProps> = [];
+      const exemplarPoints: Array<ExemplarPoint> = [];
+
+      for (const chart of charts) {
+        for (
+          let seriesIndex: number = 0;
+          seriesIndex < chart.props.data.length;
+          seriesIndex++
+        ) {
+          const series: SeriesPoint = chart.props.data[seriesIndex]!;
+          let seriesName: string = series.seriesName;
+          if (seenSeriesNames.has(seriesName)) {
+            seriesName = `${chart.title || "Query"} ${chart.id}: ${seriesName}`;
+          }
+          seenSeriesNames.add(seriesName);
+          combinedSeries.push({
+            ...series,
+            seriesName,
+          });
+
+          if (hasExplicitColors) {
+            combinedColors.push(
+              chart.props.colors?.[seriesIndex] ||
+                LineChartPalette[
+                  combinedColors.length % LineChartPalette.length
+                ]!,
+            );
+          }
+        }
+
+        if (chart.props.referenceLines) {
+          referenceLines.push(...chart.props.referenceLines);
+        }
+        if (chart.exemplarPoints) {
+          exemplarPoints.push(...chart.exemplarPoints);
+        }
+      }
+
+      const firstChart: Chart = charts[0]!;
+      const metricNames: Set<string> = new Set<string>(
+        charts
+          .map((chart: Chart) => {
+            return chart.metricInfo?.metricName || "";
+          })
+          .filter((metricName: string) => {
+            return metricName !== "";
+          }),
+      );
+
+      return [
+        {
+          ...firstChart,
+          id: "combined-metric-queries",
+          title:
+            charts.find((chart: Chart) => {
+              return chart.title !== "";
+            })?.title || firstChart.title,
+          description:
+            charts.find((chart: Chart) => {
+              return Boolean(chart.description);
+            })?.description || firstChart.description,
+          metricInfo:
+            metricNames.size === 1 ? firstChart.metricInfo : undefined,
+          exemplarPoints:
+            exemplarPoints.length > 0
+              ? exemplarPoints
+              : firstChart.exemplarPoints,
+          seriesControls: undefined,
+          props: {
+            ...firstChart.props,
+            data: combinedSeries,
+            colors: hasExplicitColors ? combinedColors : undefined,
+            referenceLines:
+              referenceLines.length > 0 ? referenceLines : undefined,
+          },
+        },
+      ];
     }
 
     /*
