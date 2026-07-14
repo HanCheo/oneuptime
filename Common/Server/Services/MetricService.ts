@@ -1521,7 +1521,7 @@ export class MetricService extends AnalyticsDatabaseService<Metric> {
       );
     } else {
       statement.append(
-        SQL` AND attributeValue IN (SELECT attributeValue FROM ${databaseName}.MetricItemAttributeAggMV1m WHERE bucketTime >= toDateTime('${this.formatDateTime(aggregateBy.startTimestamp!)}') AND bucketTime <= toDateTime('${this.formatDateTime(aggregateBy.endTimestamp!)}')${this.getRetentionReadFilter()} AND attributeKey = ${{
+        SQL` AND attributeValue GLOBAL IN (SELECT attributeValue FROM ${databaseName}.MetricItemAttributeAggMV1m WHERE bucketTime >= toDateTime('${this.formatDateTime(aggregateBy.startTimestamp!)}') AND bucketTime <= toDateTime('${this.formatDateTime(aggregateBy.endTimestamp!)}')${this.getRetentionReadFilter()} AND attributeKey = ${{
           value: attributeKey,
           type: TableColumnType.Text,
         }} `,
