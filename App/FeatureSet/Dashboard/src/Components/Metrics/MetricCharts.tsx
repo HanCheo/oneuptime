@@ -1299,9 +1299,20 @@ const MetricCharts: FunctionComponent<ComponentProps> = (
       index++;
     }
 
+    const formulaConfigs: Array<MetricFormulaConfigData> =
+      props.metricViewData.formulaConfigs || [];
+    const shouldCombineFormulaLineCharts: boolean =
+      formulaConfigs.length > 1 &&
+      formulaConfigs.every((formulaConfig: MetricFormulaConfigData) => {
+        return (
+          !formulaConfig.chartType ||
+          formulaConfig.chartType === MetricChartType.LINE
+        );
+      });
+
     if (
       props.metricViewData.queryConfigs.length > 1 &&
-      (props.metricViewData.formulaConfigs || []).length === 0 &&
+      formulaConfigs.length === 0 &&
       charts.length > 1 &&
       charts.every((chart: Chart) => {
         return chart.type === ChartType.LINE;
@@ -1397,8 +1408,7 @@ const MetricCharts: FunctionComponent<ComponentProps> = (
      * for formulas live at indices [queryConfigs.length, queryConfigs.length + formulaConfigs.length)
      * in props.metricResults (Metrics.fetchResults appends them in order).
      */
-    const formulaConfigs: Array<MetricFormulaConfigData> =
-      props.metricViewData.formulaConfigs || [];
+    const formulaCharts: Array<Chart> = [];
 
     for (
       let formulaIndex: number = 0;
@@ -1438,7 +1448,10 @@ const MetricCharts: FunctionComponent<ComponentProps> = (
       let formulaChartType: ChartType;
       if (formulaConfig.chartType === MetricChartType.BAR) {
         formulaChartType = ChartType.BAR;
-      } else if (formulaConfig.chartType === MetricChartType.LINE) {
+      } else if (
+        formulaConfig.chartType === MetricChartType.LINE ||
+        (shouldCombineFormulaLineCharts && !formulaConfig.chartType)
+      ) {
         formulaChartType = ChartType.LINE;
       } else {
         formulaChartType = ChartType.AREA;
@@ -1536,9 +1549,59 @@ const MetricCharts: FunctionComponent<ComponentProps> = (
         },
       };
 
-      charts.push(formulaChart);
+      formulaCharts.push(formulaChart);
     }
 
+    if (shouldCombineFormulaLineCharts) {
+      if (formulaCharts.length === 0) {
+        return [];
+      }
+
+      const firstFormulaChart: Chart = formulaCharts[0]!;
+      const combinedFormulaSeries: Array<SeriesPoint> = [];
+      const combinedFormulaColors: Array<ChartColorValue> = [];
+      const hasFormulaColors: boolean = formulaCharts.some((chart: Chart) => {
+        return Boolean(chart.props.colors && chart.props.colors.length > 0);
+      });
+      const formulaReferenceLines: Array<ChartReferenceLineProps> = [];
+
+      for (const formulaChart of formulaCharts) {
+        combinedFormulaSeries.push(...formulaChart.props.data);
+
+        if (hasFormulaColors) {
+          combinedFormulaColors.push(
+            formulaChart.props.colors?.[0] ||
+              LineChartPalette[
+                combinedFormulaColors.length % LineChartPalette.length
+              ]!,
+          );
+        }
+
+        if (formulaChart.props.referenceLines) {
+          formulaReferenceLines.push(...formulaChart.props.referenceLines);
+        }
+      }
+
+      return [
+        {
+          ...firstFormulaChart,
+          id: "combined-metric-formulas",
+          type: ChartType.LINE,
+          metricInfo: undefined,
+          props: {
+            ...firstFormulaChart.props,
+            data: combinedFormulaSeries,
+            colors: hasFormulaColors ? combinedFormulaColors : undefined,
+            referenceLines:
+              formulaReferenceLines.length > 0
+                ? formulaReferenceLines
+                : undefined,
+          },
+        },
+      ];
+    }
+
+    charts.push(...formulaCharts);
     return charts;
   };
 
