@@ -1,5 +1,6 @@
 import MetricFormulaEvaluator from "../../../Utils/Metrics/MetricFormulaEvaluator";
 import AggregatedResult from "../../../Types/BaseDatabase/AggregatedResult";
+import AggregatedModel from "../../../Types/BaseDatabase/AggregatedModel";
 import MetricQueryConfigData from "../../../Types/Metrics/MetricQueryConfigData";
 import MetricFormulaConfigData from "../../../Types/Metrics/MetricFormulaConfigData";
 import MetricsAggregationType from "../../../Types/Metrics/MetricsAggregationType";
@@ -165,6 +166,55 @@ describe("MetricFormulaEvaluator", () => {
 
       expect(output.data.length).toBe(1);
       expect(output.data[0]!.value).toBe(5);
+    });
+
+    test("supports rate() for monotonically increasing counters", () => {
+      const queryConfigs: Array<MetricQueryConfigData> = [
+        buildQueryConfig("a"),
+        buildQueryConfig("b"),
+      ];
+      const results: Array<AggregatedResult> = [
+        buildResult([
+          { timestamp: "2024-01-01T00:00:00.000Z", value: 10 },
+          { timestamp: "2024-01-01T00:01:00.000Z", value: 70 },
+          { timestamp: "2024-01-01T00:02:00.000Z", value: 20 },
+          { timestamp: "2024-01-01T00:03:00.000Z", value: 80 },
+        ]),
+        buildResult([
+          { timestamp: "2024-01-01T00:00:00.000Z", value: 100 },
+          { timestamp: "2024-01-01T00:01:00.000Z", value: 220 },
+          { timestamp: "2024-01-01T00:02:00.000Z", value: 340 },
+          { timestamp: "2024-01-01T00:03:00.000Z", value: 460 },
+        ]),
+      ];
+
+      const output: AggregatedResult = MetricFormulaEvaluator.evaluateFormula({
+        formula: "rate(a) / rate(b) * 100",
+        queryConfigs,
+        formulaConfigs: [],
+        results,
+      });
+
+      expect(
+        output.data.map((point: AggregatedModel) => {
+          return {
+            timestamp: point.timestamp.toISOString(),
+            value: point.value,
+          };
+        }),
+      ).toEqual([
+        { timestamp: "2024-01-01T00:01:00.000Z", value: 50 },
+        { timestamp: "2024-01-01T00:03:00.000Z", value: 50 },
+      ]);
+    });
+
+    test("rejects invalid rate() syntax", () => {
+      const message: string | null = MetricFormulaEvaluator.validateFormula({
+        formula: "rate(a + b)",
+        availableVariables: ["a", "b"],
+      });
+
+      expect(message).toMatch(/rate\(\)/i);
     });
 
     test("references another formula's pre-computed result", () => {

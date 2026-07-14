@@ -42,6 +42,8 @@ const OPERATOR_PRECEDENCE: Record<Operator, number> = {
 
 const RIGHT_ASSOCIATIVE: Set<Operator> = new Set<Operator>(["^", "u-", "u+"]);
 
+const RATE_VARIABLE_PREFIX: string = "rate:";
+
 export interface FormulaPoint {
   timestamp: Date | string;
   value: number;
@@ -92,10 +94,11 @@ export default class MetricFormulaEvaluator {
     const timestampIndex: Map<
       string,
       Record<string, number>
-    > = MetricFormulaEvaluator.buildTimestampIndex(
-      referencedVariables,
+    > = MetricFormulaEvaluator.buildTimestampIndex({
+      variables: referencedVariables,
+      rateVariables: MetricFormulaEvaluator.collectRateVariableNames(rpn),
       variableResults,
-    );
+    });
 
     const sortedTimestamps: Array<string> = Array.from(
       timestampIndex.keys(),
@@ -237,14 +240,16 @@ export default class MetricFormulaEvaluator {
     return variableMap;
   }
 
-  private static buildTimestampIndex(
-    variables: Array<string>,
-    variableResults: Record<string, AggregatedResult>,
-  ): Map<string, Record<string, number>> {
+  private static buildTimestampIndex(input: {
+    variables: Array<string>;
+    rateVariables: Array<string>;
+    variableResults: Record<string, AggregatedResult>;
+  }): Map<string, Record<string, number>> {
     const index: Map<string, Record<string, number>> = new Map();
 
-    for (const variable of variables) {
-      const series: AggregatedResult | undefined = variableResults[variable];
+    for (const variable of input.variables) {
+      const series: AggregatedResult | undefined =
+        input.variableResults[variable];
       if (!series) {
         continue;
       }
@@ -260,6 +265,27 @@ export default class MetricFormulaEvaluator {
 
         const bucket: Record<string, number> = index.get(timestampKey) || {};
         bucket[variable] = sample.value;
+      }
+    }
+
+    for (const variable of input.rateVariables) {
+      const series: AggregatedResult | undefined =
+        input.variableResults[variable];
+      if (!series) {
+        continue;
+      }
+
+      for (const ratePoint of MetricFormulaEvaluator.calculateRateSeries(
+        series,
+      )) {
+        if (!index.has(ratePoint.timestamp)) {
+          index.set(ratePoint.timestamp, {});
+        }
+
+        const bucket: Record<string, number> =
+          index.get(ratePoint.timestamp) || {};
+        bucket[MetricFormulaEvaluator.toRateVariableName(variable)] =
+          ratePoint.value;
       }
     }
 
@@ -284,12 +310,64 @@ export default class MetricFormulaEvaluator {
     return String(timestamp);
   }
 
+  private static calculateRateSeries(
+    series: AggregatedResult,
+  ): Array<{ timestamp: string; value: number }> {
+    const sortedSamples: Array<AggregatedModel> = [...series.data].sort(
+      (left: AggregatedModel, right: AggregatedModel) => {
+        return (
+          MetricFormulaEvaluator.getTimestampMillis(left.timestamp) -
+          MetricFormulaEvaluator.getTimestampMillis(right.timestamp)
+        );
+      },
+    );
+    const rates: Array<{ timestamp: string; value: number }> = [];
+    let previousSample: AggregatedModel | null = null;
+
+    for (const sample of sortedSamples) {
+      const currentMillis: number =
+        MetricFormulaEvaluator.getTimestampMillis(sample.timestamp);
+
+      if (!Number.isFinite(currentMillis) || !Number.isFinite(sample.value)) {
+        continue;
+      }
+
+      if (previousSample) {
+        const previousMillis: number =
+          MetricFormulaEvaluator.getTimestampMillis(previousSample.timestamp);
+        const elapsedSeconds: number = (currentMillis - previousMillis) / 1000;
+        const delta: number = sample.value - previousSample.value;
+
+        if (elapsedSeconds > 0 && delta >= 0) {
+          rates.push({
+            timestamp: MetricFormulaEvaluator.normalizeTimestamp(
+              sample.timestamp,
+            ),
+            value: delta / elapsedSeconds,
+          });
+        }
+      }
+
+      previousSample = sample;
+    }
+
+    return rates;
+  }
+
+  private static getTimestampMillis(timestamp: Date | string): number {
+    if (timestamp instanceof Date) {
+      return timestamp.getTime();
+    }
+    return new Date(timestamp).getTime();
+  }
+
   private static collectVariableNames(rpn: Array<Token>): Array<string> {
     const seen: Set<string> = new Set<string>();
     const result: Array<string> = [];
     for (const token of rpn) {
       if (token.type === TokenType.Variable) {
-        const normalized: string = token.value.toLowerCase();
+        const normalized: string =
+          MetricFormulaEvaluator.toReferencedVariableName(token.value);
         if (!seen.has(normalized)) {
           seen.add(normalized);
           result.push(normalized);
@@ -297,6 +375,41 @@ export default class MetricFormulaEvaluator {
       }
     }
     return result;
+  }
+
+  private static collectRateVariableNames(rpn: Array<Token>): Array<string> {
+    const seen: Set<string> = new Set<string>();
+    const result: Array<string> = [];
+    for (const token of rpn) {
+      if (
+        token.type === TokenType.Variable &&
+        MetricFormulaEvaluator.isRateVariableName(token.value)
+      ) {
+        const normalized: string =
+          MetricFormulaEvaluator.toReferencedVariableName(token.value);
+        if (!seen.has(normalized)) {
+          seen.add(normalized);
+          result.push(normalized);
+        }
+      }
+    }
+    return result;
+  }
+
+  private static isRateVariableName(variableName: string): boolean {
+    return variableName.toLowerCase().startsWith(RATE_VARIABLE_PREFIX);
+  }
+
+  private static toRateVariableName(variableName: string): string {
+    return `${RATE_VARIABLE_PREFIX}${variableName.toLowerCase()}`;
+  }
+
+  private static toReferencedVariableName(variableName: string): string {
+    const normalized: string = variableName.toLowerCase();
+    if (MetricFormulaEvaluator.isRateVariableName(normalized)) {
+      return normalized.slice(RATE_VARIABLE_PREFIX.length);
+    }
+    return normalized;
   }
 
   private static tokenize(expression: string): Array<Token> {
@@ -352,7 +465,8 @@ export default class MetricFormulaEvaluator {
 
       // Variable — may be prefixed with "$" or bare ("a", "b1", etc.)
       if (char === "$" || MetricFormulaEvaluator.isIdentifierStart(char)) {
-        if (char === "$") {
+        const startsWithDollar: boolean = char === "$";
+        if (startsWithDollar) {
           position++;
         }
         let identifier: string = "";
@@ -368,6 +482,22 @@ export default class MetricFormulaEvaluator {
           throw new BadDataException(
             `Unexpected character "$" without a variable name.`,
           );
+        }
+
+        if (!startsWithDollar && identifier.toLowerCase() === "rate") {
+          const rateVariableName: string | null =
+            MetricFormulaEvaluator.tryParseRateCall(expression, position);
+          if (rateVariableName) {
+            tokens.push({
+              type: TokenType.Variable,
+              value: MetricFormulaEvaluator.toRateVariableName(rateVariableName),
+            });
+            position = MetricFormulaEvaluator.getPositionAfterRateCall(
+              expression,
+              position,
+            );
+            continue;
+          }
         }
 
         tokens.push({ type: TokenType.Variable, value: identifier });
@@ -405,6 +535,86 @@ export default class MetricFormulaEvaluator {
     }
 
     return tokens;
+  }
+
+  private static tryParseRateCall(
+    expression: string,
+    positionAfterRate: number,
+  ): string | null {
+    let position: number = MetricFormulaEvaluator.skipWhitespace(
+      expression,
+      positionAfterRate,
+    );
+
+    if (expression[position] !== "(") {
+      return null;
+    }
+
+    position = MetricFormulaEvaluator.skipWhitespace(expression, position + 1);
+
+    if (expression[position] === "$") {
+      position++;
+    }
+
+    let variableName: string = "";
+    while (
+      position < expression.length &&
+      MetricFormulaEvaluator.isIdentifierPart(expression[position]!)
+    ) {
+      variableName += expression[position];
+      position++;
+    }
+
+    if (
+      !variableName ||
+      !MetricFormulaEvaluator.isIdentifierStart(variableName[0]!)
+    ) {
+      throw new BadDataException("rate() expects a single variable name.");
+    }
+
+    position = MetricFormulaEvaluator.skipWhitespace(expression, position);
+    if (expression[position] !== ")") {
+      throw new BadDataException("rate() expects a single variable name.");
+    }
+
+    return variableName;
+  }
+
+  private static getPositionAfterRateCall(
+    expression: string,
+    positionAfterRate: number,
+  ): number {
+    let position: number = MetricFormulaEvaluator.skipWhitespace(
+      expression,
+      positionAfterRate,
+    );
+    position = MetricFormulaEvaluator.skipWhitespace(expression, position + 1);
+
+    if (expression[position] === "$") {
+      position++;
+    }
+
+    while (
+      position < expression.length &&
+      MetricFormulaEvaluator.isIdentifierPart(expression[position]!)
+    ) {
+      position++;
+    }
+
+    position = MetricFormulaEvaluator.skipWhitespace(expression, position);
+    return position + 1;
+  }
+
+  private static skipWhitespace(expression: string, position: number): number {
+    while (
+      position < expression.length &&
+      (expression[position] === " " ||
+        expression[position] === "\t" ||
+        expression[position] === "\n")
+    ) {
+      position++;
+    }
+    return position;
   }
 
   private static isNumberChar(char: string, currentBuffer: string): boolean {
