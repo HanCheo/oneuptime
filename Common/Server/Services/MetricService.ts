@@ -1462,12 +1462,6 @@ export class MetricService extends AnalyticsDatabaseService<Metric> {
       endDate: aggregateBy.endTimestamp!,
     });
     const intervalLower: string = interval.toLowerCase();
-    const maxSeries: number = this.getMaxSeriesForAggregateWindow({
-      startTimestamp: aggregateBy.startTimestamp!,
-      endTimestamp: aggregateBy.endTimestamp!,
-      interval,
-      limit: Number(aggregateBy.limit),
-    });
 
     let mergedExpr: string;
     if (aggType === AggregationType.Sum) {
@@ -1518,20 +1512,6 @@ export class MetricService extends AnalyticsDatabaseService<Metric> {
           value: String(attributeFilters[attributeKey]),
           type: TableColumnType.Text,
         }}`,
-      );
-    } else {
-      statement.append(
-        SQL` AND attributeValue IN (SELECT attributeValue FROM ${databaseName}.MetricItemAttributeAggMV1m WHERE bucketTime >= toDateTime('${this.formatDateTime(aggregateBy.startTimestamp!)}') AND bucketTime <= toDateTime('${this.formatDateTime(aggregateBy.endTimestamp!)}')${this.getRetentionReadFilter()} AND attributeKey = ${{
-          value: attributeKey,
-          type: TableColumnType.Text,
-        }} `,
-      );
-      statement.append(nonAttributeWhere);
-      statement.append(
-        SQL` GROUP BY attributeValue ORDER BY countMerge(valueCountState) DESC LIMIT ${{
-          value: maxSeries,
-          type: TableColumnType.Number,
-        }})`,
       );
     }
     statement.append(SQL` `).append(nonAttributeWhere);
