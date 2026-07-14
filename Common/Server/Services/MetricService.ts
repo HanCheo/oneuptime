@@ -1487,9 +1487,6 @@ export class MetricService extends AnalyticsDatabaseService<Metric> {
       this.stripAttributesAndTimeFromQuery(aggregateBy.query) as Query<Metric>;
     const nonAttributeWhere: Statement =
       this.statementGenerator.toWhereStatement(queryWithoutTimeAndAttributes);
-    const sortStatement: Statement = this.statementGenerator.toSortStatement(
-      aggregateBy.sort!,
-    );
 
     const statement: Statement = SQL``;
     statement.append(
@@ -1536,7 +1533,13 @@ export class MetricService extends AnalyticsDatabaseService<Metric> {
     }
     statement.append(SQL` `).append(nonAttributeWhere);
     statement.append(SQL` GROUP BY time, attributeValue`);
-    statement.append(SQL` ORDER BY `).append(sortStatement);
+    if (aggregateBy.sort && Object.keys(aggregateBy.sort).length > 0) {
+      statement.append(SQL` ORDER BY `).append(
+        this.statementGenerator.toSortStatement(aggregateBy.sort),
+      );
+    } else {
+      statement.append(` ORDER BY time ASC`);
+    }
     statement.append(
       SQL` LIMIT ${{
         value: Number(aggregateBy.limit),
