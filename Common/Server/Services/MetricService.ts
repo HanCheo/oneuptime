@@ -1393,6 +1393,14 @@ export class MetricService extends AnalyticsDatabaseService<Metric> {
       return null;
     }
 
+    const queryRecord: Record<string, unknown> =
+      (aggregateBy.query as unknown as Record<string, unknown>) || {};
+    const attributeFilters: Record<string, unknown> | null =
+      this.getAttributeRollupFilters(queryRecord["attributes"]);
+    if (attributeFilters === null) {
+      return null;
+    }
+
     const attributeKeys: Array<string> = Array.from(
       new Set(
         (aggregateBy.groupByAttributeKeys || [])
@@ -1404,44 +1412,31 @@ export class MetricService extends AnalyticsDatabaseService<Metric> {
           }),
       ),
     );
-    if (attributeKeys.length !== 1) {
+    if (attributeKeys.length > 1) {
       return null;
     }
 
-    const attributeKey: string = attributeKeys[0]!;
-    if (!MetricService.attributeRollupKeys.has(attributeKey)) {
+    const attributeFilterKeys: Array<string> = Object.keys(attributeFilters);
+    const attributeKey: string | undefined =
+      attributeKeys[0] || attributeFilterKeys[0];
+    if (
+      !attributeKey ||
+      !MetricService.attributeRollupKeys.has(attributeKey) ||
+      attributeFilterKeys.length > 1 ||
+      (attributeFilterKeys.length === 1 &&
+        attributeFilterKeys[0] !== attributeKey)
+    ) {
       return null;
     }
 
+    // A filtered single-attribute series has the same rollup key as an
+    // explicitly grouped chart, so it can use the selected-attribute MV too.
     const nonAttributeGroupByKeys: Array<string> = aggregateBy.groupBy
       ? Object.keys(aggregateBy.groupBy).filter((key: string) => {
           return key !== "attributes";
         })
       : [];
     if (nonAttributeGroupByKeys.length > 0) {
-      return null;
-    }
-
-    const queryRecord: Record<string, unknown> =
-      (aggregateBy.query as unknown as Record<string, unknown>) || {};
-    const attributeFilters: Record<string, unknown> | null =
-      this.getAttributeRollupFilters(queryRecord["attributes"]);
-    if (attributeFilters === null) {
-      return null;
-    }
-
-    /*
-     * A single-key rollup cannot satisfy filters on different attributes
-     * because each MV row represents one key/value pair. Fall back to raw rows
-     * when the chart combines, for example, group-by namespace with a cluster
-     * variable filter.
-     */
-    const attributeFilterKeys: Array<string> = Object.keys(attributeFilters);
-    if (
-      attributeFilterKeys.length > 1 ||
-      (attributeFilterKeys.length === 1 &&
-        attributeFilterKeys[0] !== attributeKey)
-    ) {
       return null;
     }
 
