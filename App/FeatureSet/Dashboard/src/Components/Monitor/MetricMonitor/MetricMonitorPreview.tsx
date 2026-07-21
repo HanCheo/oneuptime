@@ -1,12 +1,5 @@
 import React, { FunctionComponent, ReactElement, useEffect } from "react";
-import MonitorStepMetricMonitor from "Common/Types/Monitor/MonitorStepMetricMonitor";
-import MonitorCriteria from "Common/Types/Monitor/MonitorCriteria";
-import MonitorCriteriaInstance from "Common/Types/Monitor/MonitorCriteriaInstance";
-import {
-  AnomalyDetectionSensitivity,
-  CheckOn,
-  FilterType,
-} from "Common/Types/Monitor/CriteriaFilter";
+import type MonitorStepMetricMonitor from "Common/Types/Monitor/MonitorStepMetricMonitor";
 import MetricView from "../../Metrics/MetricView";
 import InBetween from "Common/Types/BaseDatabase/InBetween";
 import RollingTimeUtil from "Common/Types/RollingTime/RollingTimeUtil";
@@ -25,12 +18,9 @@ import Dropdown, {
   DropdownValue,
 } from "Common/UI/Components/Dropdown/Dropdown";
 import { GetReactElementFunction } from "Common/UI/Types/FunctionTypes";
-import { AnomalyThresholdConfig } from "../../Metrics/MetricCharts";
-import MetricQueryConfigData from "Common/Types/Metrics/MetricQueryConfigData";
 
 export interface ComponentProps {
   monitorStepMetricMonitor: MonitorStepMetricMonitor | undefined;
-  monitorCriteria?: MonitorCriteria | undefined;
 }
 
 const MetricMonitorPreview: FunctionComponent<ComponentProps> = (
@@ -80,50 +70,6 @@ const MetricMonitorPreview: FunctionComponent<ComponentProps> = (
         props.monitorStepMetricMonitor?.metricViewConfig.formulaConfigs || [],
     });
   }, [startAndEndDate]);
-
-  const anomalyThresholdConfigs: Array<AnomalyThresholdConfig> = [];
-  const criteriaInstances: Array<MonitorCriteriaInstance> =
-    props.monitorCriteria?.data?.monitorCriteriaInstanceArray || [];
-  for (const criteriaInstance of criteriaInstances) {
-    if (criteriaInstance.data?.isEnabled === false) {
-      continue;
-    }
-
-    for (const filter of criteriaInstance.data?.filters || []) {
-      if (
-        filter.checkOn !== CheckOn.MetricValue ||
-        (filter.filterType !== FilterType.AnomalouslyHigh &&
-          filter.filterType !== FilterType.AnomalouslyLow &&
-          filter.filterType !== FilterType.Anomalous)
-      ) {
-        continue;
-      }
-
-      const metricAlias: string | undefined =
-        filter.metricMonitorOptions?.metricAlias;
-      const queryIndex: number =
-        props.monitorStepMetricMonitor?.metricViewConfig.queryConfigs.findIndex(
-          (queryConfig: MetricQueryConfigData) => {
-            return queryConfig.metricAliasData?.metricVariable === metricAlias;
-          },
-        ) ?? -1;
-
-      if (queryIndex < 0) {
-        continue;
-      }
-
-      anomalyThresholdConfigs.push({
-        queryIndex,
-        filterType: filter.filterType,
-        sensitivity:
-          (filter.metricMonitorOptions?.anomalyDetection?.sensitivity as
-            | AnomalyDetectionSensitivity
-            | undefined) || AnomalyDetectionSensitivity.Medium,
-        windowDays: filter.metricMonitorOptions?.anomalyDetection?.windowDays,
-        minSamples: filter.metricMonitorOptions?.anomalyDetection?.minSamples,
-      });
-    }
-  }
 
   const getStartAndEndDateElement: GetReactElementFunction =
     (): ReactElement => {
@@ -188,7 +134,6 @@ const MetricMonitorPreview: FunctionComponent<ComponentProps> = (
         hideQueryElements={true}
         chartCssClass="rounded-lg border border-gray-200 shadow-sm"
         hideStartAndEndDate={true}
-        anomalyThresholdConfigs={anomalyThresholdConfigs}
         onChange={(data: MetricViewData) => {
           setMetricViewData(data);
         }}

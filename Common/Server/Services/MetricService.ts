@@ -2203,7 +2203,9 @@ export class MetricService extends AnalyticsDatabaseService<Metric> {
     }
 
     const queryWithoutTimeAndAttributes: Query<Metric> =
-      this.stripAttributesAndTimeFromQuery(aggregateBy.query) as Query<Metric>;
+      this.stripEntityFilterAndTimeFromQuery(
+        aggregateBy.query,
+      ) as Query<Metric>;
     const nonAttributeWhere: Statement =
       this.statementGenerator.toWhereStatement(queryWithoutTimeAndAttributes);
     const sortStatement: Statement = this.statementGenerator.toSortStatement(

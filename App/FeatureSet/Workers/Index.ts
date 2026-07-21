@@ -155,6 +155,9 @@ import "./Jobs/InstanceHealth/EvaluateClickhouseCapacity";
 // Derived / recording-rule metrics.
 import "./Jobs/Metrics/ComputeRecordingRules";
 
+// Cloudflare metrics adapter.
+import "./Jobs/Cloudflare/PullMetrics";
+
 // Derived metrics from spans.
 import "./Jobs/Traces/ComputeTraceRecordingRules";
 

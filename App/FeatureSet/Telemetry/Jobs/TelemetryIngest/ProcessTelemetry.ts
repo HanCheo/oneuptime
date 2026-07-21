@@ -108,7 +108,7 @@ if (DisableQueueWorkers) {
       ].includes(jobData.type);
 
       const dedupTokenBase: string = String(
-        job.id ?? jobData.bodyKey ?? job.name,
+        jobData.deduplicationKey ?? job.id ?? jobData.bodyKey ?? job.name,
       );
 
       const runJob: (fn: () => Promise<void>) => Promise<void> = (

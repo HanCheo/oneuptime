@@ -701,6 +701,8 @@ const ExceptionsViewer: FunctionComponent<ExceptionsViewerProps> = (
       dateRange.startValue,
       dateRange.endValue,
     );
+
+    return q;
   }, [
     props.primaryEntityId,
     props.environments,

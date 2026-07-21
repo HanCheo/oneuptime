@@ -65,24 +65,6 @@ import {
   detectOperatorFromValue,
   getOperatorOption,
 } from "Common/UI/Components/Dictionary/DictionaryFilterOperator";
-import {
-  AnomalyDetectionSensitivity,
-  FilterType,
-} from "Common/Types/Monitor/CriteriaFilter";
-
-export interface AnomalyThresholdConfig {
-  queryIndex: number;
-  filterType: FilterType;
-  sensitivity: AnomalyDetectionSensitivity;
-  windowDays?: number | undefined;
-  minSamples?: number | undefined;
-}
-
-interface SelectedAnomalyThresholdSeries {
-  queryIndex: number;
-  seriesName: string;
-  attributes?: Record<string, string> | undefined;
-}
 
 export interface ComponentProps {
   metricViewData: MetricViewData;
@@ -1220,10 +1202,6 @@ const MetricCharts: FunctionComponent<ComponentProps> = (
     Record<string, Array<ExemplarPoint>>
   >({});
 
-  const [anomalyBandsByChart, setAnomalyBandsByChart] = useState<
-    Record<string, Array<MetricAnomalyBandPoint>>
-  >({});
-
   // Per-chart controls (search, hidden set, show-all) keyed by chart id.
   const [seriesControlsByChart, setSeriesControlsByChart] = useState<
     Record<string, SeriesControlsState>
@@ -1352,275 +1330,6 @@ const MetricCharts: FunctionComponent<ComponentProps> = (
         });
     }
   }, [startMs, endMs, exemplarTargetsKey]);
-
-  const anomalyThresholdKey: string = JSON.stringify({
-    configs: props.anomalyThresholdConfigs || [],
-    selections: getSelectedAnomalyThresholdSeries(),
-  });
-
-  useEffect(() => {
-    if (
-      startMs === undefined ||
-      endMs === undefined ||
-      !props.anomalyThresholdConfigs ||
-      props.anomalyThresholdConfigs.length === 0
-    ) {
-      setAnomalyBandsByChart({});
-      return;
-    }
-
-    const startAndEndDate: InBetween<Date> = new InBetween<Date>(
-      new Date(startMs),
-      new Date(endMs),
-    );
-
-    let isCancelled: boolean = false;
-
-    Promise.all(
-      props.anomalyThresholdConfigs.map(
-        async (
-          config: AnomalyThresholdConfig,
-        ): Promise<[string, Array<MetricAnomalyBandPoint>]> => {
-          const queryConfig: MetricQueryConfigData | undefined =
-            props.metricViewData.queryConfigs[config.queryIndex];
-          const metricName: string =
-            queryConfig?.metricQueryData.filterData.metricName?.toString() ||
-            "";
-
-          if (!metricName) {
-            return [config.queryIndex.toString(), []];
-          }
-
-          const selectedSeries: SelectedAnomalyThresholdSeries | undefined =
-            getSelectedAnomalyThresholdSeries().find(
-              (series: SelectedAnomalyThresholdSeries) => {
-                return series.queryIndex === config.queryIndex;
-              },
-            );
-          const groupByAttributeKeys: Array<string> =
-            queryConfig?.metricQueryData.groupByAttributeKeys || [];
-          if (
-            groupByAttributeKeys.length > 0 &&
-            (!selectedSeries ||
-              Object.keys(selectedSeries.attributes || {}).length !==
-                groupByAttributeKeys.length)
-          ) {
-            return [config.queryIndex.toString(), []];
-          }
-
-          const band: Array<MetricAnomalyBandPoint> =
-            await MetricUtil.fetchAnomalyBand({
-              metricName,
-              startAndEndDate,
-              sigmaCount: getSigmaCount(config.sensitivity),
-              intervalMinutes: getChartIntervalMinutes(config.queryIndex),
-              windowDays: config.windowDays,
-              minSamples: config.minSamples,
-              attributes: selectedSeries?.attributes,
-            });
-
-          return [config.queryIndex.toString(), band];
-        },
-      ),
-    )
-      .then((results: Array<[string, Array<MetricAnomalyBandPoint>]>) => {
-        if (isCancelled) {
-          return;
-        }
-
-        const next: Record<string, Array<MetricAnomalyBandPoint>> = {};
-        for (const [chartId, band] of results) {
-          next[chartId] = band;
-        }
-        setAnomalyBandsByChart(next);
-      })
-      .catch(() => {
-        if (!isCancelled) {
-          setAnomalyBandsByChart({});
-        }
-      });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [startMs, endMs, anomalyThresholdKey]);
-
-  function getSigmaCount(sensitivity: AnomalyDetectionSensitivity): number {
-    if (sensitivity === AnomalyDetectionSensitivity.High) {
-      return 2;
-    }
-    if (sensitivity === AnomalyDetectionSensitivity.Low) {
-      return 4;
-    }
-    return 3;
-  }
-
-  function getChartIntervalMinutes(queryIndex: number): number {
-    const result: AggregatedResult | undefined =
-      props.metricResults[queryIndex];
-    const timestamps: Array<number> = (
-      (result?.data || []) as Array<AggregatedModel>
-    )
-      .map((row: AggregatedModel) => {
-        return OneUptimeDate.fromString(row.timestamp).getTime();
-      })
-      .filter((timestamp: number) => {
-        return Number.isFinite(timestamp);
-      })
-      .sort((a: number, b: number) => {
-        return a - b;
-      });
-
-    for (let index: number = 1; index < timestamps.length; index++) {
-      const diffMinutes: number =
-        (timestamps[index]! - timestamps[index - 1]!) / 60_000;
-      if (diffMinutes > 0) {
-        return Math.max(1, Math.round(diffMinutes));
-      }
-    }
-
-    return 1;
-  }
-
-  function getSelectedAnomalyThresholdSeries(): Array<SelectedAnomalyThresholdSeries> {
-    const selected: Array<SelectedAnomalyThresholdSeries> = [];
-
-    for (
-      let queryIndex: number = 0;
-      queryIndex < props.metricViewData.queryConfigs.length;
-      queryIndex++
-    ) {
-      const queryConfig: MetricQueryConfigData | undefined =
-        props.metricViewData.queryConfigs[queryIndex];
-      const result: AggregatedResult | undefined =
-        props.metricResults[queryIndex];
-      const groupByAttributeKeys: Array<string> =
-        queryConfig?.metricQueryData.groupByAttributeKeys || [];
-
-      if (!queryConfig || !result || groupByAttributeKeys.length === 0) {
-        selected.push({
-          queryIndex,
-          seriesName:
-            queryConfig?.metricAliasData?.legend ||
-            queryConfig?.metricQueryData.filterData.metricName?.toString() ||
-            "",
-        });
-        continue;
-      }
-
-      const bySeries: Map<
-        string,
-        { attributes: Record<string, string>; peak: number }
-      > = new Map();
-
-      for (const item of result.data as Array<AggregatedModel>) {
-        const attributes: Record<string, unknown> =
-          ((item as unknown as Dictionary<unknown>)["attributes"] as
-            | Record<string, unknown>
-            | undefined) || {};
-        const selectedAttributes: Record<string, string> = {};
-        const parts: Array<string> = [];
-
-        for (const key of groupByAttributeKeys) {
-          const value: unknown = attributes[key];
-          const displayValue: string =
-            value === undefined || value === null || value === ""
-              ? "(unset)"
-              : String(value);
-          parts.push(`${key}=${displayValue}`);
-          if (value !== undefined && value !== null && value !== "") {
-            selectedAttributes[key] = String(value);
-          }
-        }
-
-        const seriesName: string = parts.join(", ");
-        const existing:
-          | { attributes: Record<string, string>; peak: number }
-          | undefined = bySeries.get(seriesName);
-        const value: number = Math.abs(Number(item.value) || 0);
-        if (!existing || value > existing.peak) {
-          bySeries.set(seriesName, {
-            attributes: selectedAttributes,
-            peak: value,
-          });
-        }
-      }
-
-      const controls: SeriesControlsState = getControls(queryIndex.toString());
-      let visible: Array<{
-        seriesName: string;
-        attributes: Record<string, string>;
-        peak: number;
-      }> = Array.from(bySeries.entries()).map(
-        ([seriesName, data]: [
-          string,
-          { attributes: Record<string, string>; peak: number },
-        ]) => {
-          return {
-            seriesName,
-            attributes: data.attributes,
-            peak: data.peak,
-          };
-        },
-      );
-
-      visible = visible.sort(
-        (
-          a: {
-            seriesName: string;
-            attributes: Record<string, string>;
-            peak: number;
-          },
-          b: {
-            seriesName: string;
-            attributes: Record<string, string>;
-            peak: number;
-          },
-        ) => {
-          return b.peak - a.peak;
-        },
-      );
-
-      if (controls.searchQuery.trim() !== "") {
-        const query: string = controls.searchQuery.toLowerCase();
-        visible = visible.filter(
-          (series: {
-            seriesName: string;
-            attributes: Record<string, string>;
-            peak: number;
-          }) => {
-            return series.seriesName.toLowerCase().includes(query);
-          },
-        );
-      }
-
-      if (controls.hiddenSeries.size > 0) {
-        visible = visible.filter(
-          (series: {
-            seriesName: string;
-            attributes: Record<string, string>;
-            peak: number;
-          }) => {
-            return !controls.hiddenSeries.has(series.seriesName);
-          },
-        );
-      }
-
-      if (visible.length > DEFAULT_TOP_N_SERIES && !controls.showAllSeries) {
-        visible = visible.slice(0, DEFAULT_TOP_N_SERIES);
-      }
-
-      if (visible.length === 1) {
-        selected.push({
-          queryIndex,
-          seriesName: visible[0]!.seriesName,
-          attributes: visible[0]!.attributes,
-        });
-      }
-    }
-
-    return selected;
-  }
 
   const handleExemplarClick: (exemplar: ExemplarPoint) => void = useCallback(
     (exemplar: ExemplarPoint): void => {
@@ -2274,7 +1983,7 @@ const MetricCharts: FunctionComponent<ComponentProps> = (
         let observedMax: number = Number.NEGATIVE_INFINITY;
         let observedMin: number = 0;
         let hasFinitePoint: boolean = false;
-        for (const series of chartDisplaySeries) {
+        for (const series of displayableSeries) {
           for (const point of series.data) {
             if (typeof point.y === "number" && Number.isFinite(point.y)) {
               hasFinitePoint = true;
@@ -2314,7 +2023,7 @@ const MetricCharts: FunctionComponent<ComponentProps> = (
         onExemplarClick: handleExemplarClick,
         seriesControls: seriesControls,
         props: {
-          data: chartDisplaySeries,
+          data: displayableSeries,
           xAxis: {
             legend: "Time",
             options: {

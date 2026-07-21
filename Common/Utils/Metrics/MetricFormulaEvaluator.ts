@@ -243,7 +243,6 @@ export default class MetricFormulaEvaluator {
           groupAttributes: groupLabels,
         }),
       );
-
     }
 
     return { data: resultData };
@@ -500,13 +499,11 @@ export default class MetricFormulaEvaluator {
     seriesByVariable: Record<string, Array<AggregatedModel>>;
     groupAttributes?: JSONObject | undefined;
   }): Array<AggregatedModel> {
-    const timestampIndex: Map<
-      string,
-      Record<string, number>
-    > = MetricFormulaEvaluator.buildTimestampIndex(
-      input.referencedVariables,
-      input.seriesByVariable,
-    );
+    const timestampIndex: Map<string, FormulaEvaluationBucket> =
+      MetricFormulaEvaluator.buildTimestampIndex(
+        input.referencedVariables,
+        input.seriesByVariable,
+      );
 
     const sortedTimestamps: Array<string> = Array.from(
       timestampIndex.keys(),
@@ -514,9 +511,9 @@ export default class MetricFormulaEvaluator {
 
     const resultData: Array<AggregatedModel> = [];
 
-    for (const timestampString of sortedTimestamps) {
-      const values: Record<string, number> =
-        timestampIndex.get(timestampString) || {};
+    for (const bucketKey of sortedTimestamps) {
+      const bucket: FormulaEvaluationBucket = timestampIndex.get(bucketKey)!;
+      const values: Record<string, number> = bucket.values;
 
       const hasAllValues: boolean = input.referencedVariables.every(
         (variable: string) => {
@@ -538,7 +535,8 @@ export default class MetricFormulaEvaluator {
       }
 
       const row: AggregatedModel = {
-        timestamp: new Date(timestampString),
+        ...bucket.dimensions,
+        timestamp: new Date(bucket.timestamp),
         value: evaluated,
       };
 
@@ -558,8 +556,8 @@ export default class MetricFormulaEvaluator {
   private static buildTimestampIndex(
     variables: Array<string>,
     seriesByVariable: Record<string, Array<AggregatedModel>>,
-  ): Map<string, Record<string, number>> {
-    const index: Map<string, Record<string, number>> = new Map();
+  ): Map<string, FormulaEvaluationBucket> {
+    const index: Map<string, FormulaEvaluationBucket> = new Map();
 
     for (const variable of variables) {
       const series: Array<AggregatedModel> | undefined =

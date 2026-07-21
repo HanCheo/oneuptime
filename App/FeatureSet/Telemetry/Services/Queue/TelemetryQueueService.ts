@@ -113,6 +113,7 @@ export interface TelemetryIngestJobData {
   bodyEncoding?: OtelPayloadEncoding;
   productType?: ProductType;
   requestHeaders?: Record<string, string>;
+  deduplicationKey?: string;
   /*
    * IoT fleet scope of the ingestion key that authenticated this
    * payload (see Utils/IotFleetScope.ts). Absent / empty = unscoped
@@ -240,6 +241,13 @@ export default class TelemetryQueueService {
       ).allowedIotFleetNames;
       if (allowedIotFleetNames && allowedIotFleetNames.length > 0) {
         jobData.allowedIotFleetNames = allowedIotFleetNames;
+      }
+
+      const deduplicationKey: string | undefined = (
+        req as TelemetryRequest & { deduplicationKey?: string }
+      ).deduplicationKey;
+      if (deduplicationKey) {
+        jobData.deduplicationKey = deduplicationKey;
       }
 
       const isRawBuffer: boolean =

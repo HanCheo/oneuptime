@@ -70,6 +70,15 @@ const DashboardSideMenu: () => JSX.Element = (): ReactElement => {
         },
         {
           link: {
+            title: "Cloudflare",
+            to: RouteUtil.populateRouteParams(
+              RouteMap[PageMap.SETTINGS_CLOUDFLARE_INTEGRATIONS] as Route,
+            ),
+          },
+          icon: IconProp.Cloud,
+        },
+        {
+          link: {
             title: "Data Retention",
             to: RouteUtil.populateRouteParams(
               RouteMap[PageMap.SETTINGS_TELEMETRY_SETTINGS] as Route,

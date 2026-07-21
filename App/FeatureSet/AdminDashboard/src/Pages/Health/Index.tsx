@@ -359,7 +359,6 @@ const Health: FunctionComponent = (): ReactElement => {
     <HealthPage
       title="Overview"
       currentRoute={RouteMap[PageMap.HEALTH] as Route}
-
     >
       <HealthOverview />
     </HealthPage>

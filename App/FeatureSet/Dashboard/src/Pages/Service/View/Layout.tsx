@@ -29,6 +29,7 @@ import {
   normalizeServiceEnvironment,
   normalizeServiceVersion,
   readServiceTelemetryScopeFromUrl,
+  ServiceTelemetryScope,
   ServiceTelemetryScopeContext,
   writeServiceTelemetryScopeToUrl,
 } from "./environmentScope";
@@ -42,7 +43,10 @@ const ServiceViewLayout: FunctionComponent<
   const modelId: ObjectID = new ObjectID(id || "");
   const modelIdString: string = modelId.toString();
   const path: string = Navigation.getRoutePath(RouteUtil.getRoutes());
-  const initialScope = useMemo(readServiceTelemetryScopeFromUrl, []);
+  const initialScope: ServiceTelemetryScope = useMemo(
+    readServiceTelemetryScopeFromUrl,
+    [],
+  );
 
   const [selectedEnvironment, setSelectedEnvironmentState] = useState<string>(
     initialScope.environment,
@@ -132,6 +136,34 @@ const ServiceViewLayout: FunctionComponent<
           key
         ] || []
       );
+    };
+
+    const readTopListValues: (
+      response: HTTPResponse<JSONObject> | HTTPErrorResponse,
+    ) => Array<string> = (
+      response: HTTPResponse<JSONObject> | HTTPErrorResponse,
+    ): Array<string> => {
+      if (response instanceof HTTPErrorResponse) {
+        return [];
+      }
+
+      const rows: unknown = response.data["data"];
+      if (!Array.isArray(rows)) {
+        return [];
+      }
+
+      return rows
+        .map((row: unknown): string => {
+          if (!row || typeof row !== "object") {
+            return "";
+          }
+
+          const value: unknown = (row as JSONObject)["value"];
+          return typeof value === "string" ? value : "";
+        })
+        .filter((value: string): boolean => {
+          return Boolean(value);
+        });
     };
 
     const normalizeDistinctValues: (
@@ -227,7 +259,7 @@ const ServiceViewLayout: FunctionComponent<
         HTTPResponse<JSONObject> | HTTPErrorResponse,
         HTTPResponse<JSONObject> | HTTPErrorResponse,
         HTTPResponse<JSONObject> | HTTPErrorResponse,
-      ] = await Promise.all([
+      ] = (await Promise.all([
         API.post({
           url: URL.fromString(APP_API_URL.toString()).addRoute(
             "/telemetry/traces/analytics",
@@ -268,7 +300,12 @@ const ServiceViewLayout: FunctionComponent<
           },
           headers: requestHeaders,
         }),
-      ]);
+      ])) as [
+        HTTPResponse<JSONObject> | HTTPErrorResponse,
+        HTTPResponse<JSONObject> | HTTPErrorResponse,
+        HTTPResponse<JSONObject> | HTTPErrorResponse,
+        HTTPResponse<JSONObject> | HTTPErrorResponse,
+      ];
 
       return {
         environments: [

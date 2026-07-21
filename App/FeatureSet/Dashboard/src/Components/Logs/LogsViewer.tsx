@@ -593,17 +593,6 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
     };
   }, []);
 
-  // Extract service IDs for API calls
-  const serviceIdStrings: Array<string> | undefined = useMemo(() => {
-    if (!props.serviceIds || props.serviceIds.length === 0) {
-      return undefined;
-    }
-
-    return props.serviceIds.map((id: ObjectID) => {
-      return id.toString();
-    });
-  }, [props.serviceIds]);
-
   /*
    * Resolve the scoped service id(s) to names so the read-only "Service" chip
    * shows the service name instead of a raw UUID. Filtering still uses the
@@ -617,21 +606,6 @@ const DashboardLogsViewer: FunctionComponent<ComponentProps> = (
    * Extract trace/span IDs for API calls (histogram + facets must respect these
    * base filters so they reflect the same scope as the logs list)
    */
-  const traceIdStrings: Array<string> | undefined = useMemo(() => {
-    if (!props.traceIds || props.traceIds.length === 0) {
-      return undefined;
-    }
-
-    return [...props.traceIds];
-  }, [props.traceIds]);
-
-  const spanIdStrings: Array<string> | undefined = useMemo(() => {
-    if (!props.spanIds || props.spanIds.length === 0) {
-      return undefined;
-    }
-
-    return [...props.spanIds];
-  }, [props.spanIds]);
   // Extract attribute filters from logQuery for histogram/facets API calls
   const logQueryAttributes: Record<string, string> | undefined = useMemo(() => {
     if (!props.logQuery) {

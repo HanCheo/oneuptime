@@ -64,6 +64,7 @@ import CephClusterOwnerRuleService from "./CephClusterOwnerRuleService";
 import CephClusterOwnerTeamService from "./CephClusterOwnerTeamService";
 import CephClusterOwnerUserService from "./CephClusterOwnerUserService";
 import LlmProviderService from "./LlmProviderService";
+import CloudflareIntegrationService from "./CloudflareIntegrationService";
 import AuditLogService from "./AuditLogService";
 import LogService from "./LogService";
 import MailService from "./MailService";
@@ -344,6 +345,7 @@ const services: Array<BaseService> = [
   CephClusterOwnerTeamService,
   CephClusterOwnerUserService,
   LlmProviderService,
+  CloudflareIntegrationService,
 
   MailService,
   MonitorCustomFieldService,

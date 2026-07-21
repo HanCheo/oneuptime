@@ -55,15 +55,20 @@ import MyOnCallPolicies from "./Pages/Global/MyOnCallPolicies";
 import PageNotFound from "./Pages/PageNotFound/PageNotFound";
 
 // Lazy-loaded route bundles
-function lazyRoute<T extends React.ComponentType<RoutesProps>>(
-  loader: () => Promise<{ default: T }>,
-): React.LazyExoticComponent<T> {
+function lazyRoute<TProps>(
+  loader: () => Promise<{ default: React.ComponentType<TProps> }>,
+): React.LazyExoticComponent<React.ComponentType<TProps>> {
   return lazy(loader);
 }
 
-type LazyRoutesComponent = ReturnType<typeof lazyRoute>;
+type LazyRoutesComponent = React.LazyExoticComponent<
+  React.ComponentType<PageComponentProps>
+>;
+type LazyInitRoutesComponent = React.LazyExoticComponent<
+  React.ComponentType<RoutesProps>
+>;
 
-const InitRoutes: LazyRoutesComponent = lazyRoute(() => {
+const InitRoutes: LazyInitRoutesComponent = lazyRoute<RoutesProps>(() => {
   return import("./Routes/InitRoutes");
 });
 
@@ -145,10 +150,10 @@ const IoTRoutes: LazyRoutesComponent = lazyRoute(() => {
 const DockerSwarmRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/DockerSwarmRoutes");
 });
-const AIInsightsRoutes = lazyRoute(() => {
+const AIInsightsRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/AIInsightsRoutes");
 });
-const CephRoutes = lazyRoute(() => {
+const CephRoutes: LazyRoutesComponent = lazyRoute(() => {
   return import("./Routes/CephRoutes");
 });
 const HostRoutes: LazyRoutesComponent = lazyRoute(() => {

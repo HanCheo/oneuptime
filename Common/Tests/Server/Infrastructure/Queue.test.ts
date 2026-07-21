@@ -1,4 +1,12 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it, test } from "@jest/globals";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  test,
+} from "@jest/globals";
 import type { Job, Queue as BullMQQueue, RepeatableJob } from "bullmq";
 import Queue, { QueueName } from "../../../Server/Infrastructure/Queue";
 
@@ -94,21 +102,23 @@ jest.mock("../../../Server/Utils/Telemetry", () => {
       isMetricsEnabled: jest.fn().mockReturnValue(false),
       getObservableGauge: jest.fn(),
       recordExceptionMarkSpanAsErrorAndEndSpan: jest.fn(),
-      startActiveSpan: jest.fn().mockImplementation(
-        async (data: {
-          fn: (span: {
-            setStatus: jest.Mock;
-            recordException: jest.Mock;
-            end: jest.Mock;
-          }) => Promise<unknown>;
-        }) => {
-          return await data.fn({
-            setStatus: jest.fn(),
-            recordException: jest.fn(),
-            end: jest.fn(),
-          });
-        },
-      ),
+      startActiveSpan: jest
+        .fn()
+        .mockImplementation(
+          async (data: {
+            fn: (span: {
+              setStatus: jest.Mock;
+              recordException: jest.Mock;
+              end: jest.Mock;
+            }) => Promise<unknown>;
+          }) => {
+            return await data.fn({
+              setStatus: jest.fn(),
+              recordException: jest.fn(),
+              end: jest.fn(),
+            });
+          },
+        ),
     },
   };
 });

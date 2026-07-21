@@ -1,6 +1,5 @@
 import AnalyticsTableName from "../../Types/AnalyticsDatabase/AnalyticsTableName";
 
-
 const shardedTelemetryTableMap: Record<string, true> = {
   [AnalyticsTableName.Log]: true,
   [AnalyticsTableName.Metric]: true,
@@ -15,11 +14,14 @@ const shardedTelemetryTableMap: Record<string, true> = {
   [AnalyticsTableName.MetricBaselineHourly]: true,
 };
 
-export const isClickhouseTelemetryShardingEnabled: () => boolean = (): boolean => {
-  return process.env["CLICKHOUSE_TELEMETRY_SHARDING_ENABLED"] === "true";
-};
+export const isClickhouseTelemetryShardingEnabled: () => boolean =
+  (): boolean => {
+    return process.env["CLICKHOUSE_TELEMETRY_SHARDING_ENABLED"] === "true";
+  };
 
-export const getClickhouseClusterName: () => string | undefined = (): string | undefined => {
+export const getClickhouseClusterName: () => string | undefined = ():
+  | string
+  | undefined => {
   if (!isClickhouseTelemetryShardingEnabled()) {
     return undefined;
   }

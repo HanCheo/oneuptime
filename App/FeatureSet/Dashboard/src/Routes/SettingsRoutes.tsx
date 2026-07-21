@@ -49,6 +49,8 @@ import SettingsAuditLogsSettings from "../Pages/Settings/AuditLogsSettings";
 import SettingsLlmProviders from "../Pages/Settings/LlmProviders";
 
 import SettingsLlmProviderView from "../Pages/Settings/LlmProviderView";
+import SettingsCloudflareIntegrations from "../Pages/Settings/CloudflareIntegrations";
+import SettingsCloudflareIntegrationView from "../Pages/Settings/CloudflareIntegrationView";
 
 import SettingsAIAgents from "../Pages/Settings/AIAgents";
 
@@ -156,11 +158,40 @@ const SettingsRoutes: FunctionComponent<ComponentProps> = (
         />
 
         <PageRoute
+          path={RouteUtil.getLastPathForKey(
+            PageMap.SETTINGS_CLOUDFLARE_INTEGRATIONS,
+          )}
+          element={
+            <SettingsCloudflareIntegrations
+              {...props}
+              pageRoute={
+                RouteMap[PageMap.SETTINGS_CLOUDFLARE_INTEGRATIONS] as Route
+              }
+            />
+          }
+        />
+
+        <PageRoute
           path={RouteUtil.getLastPathForKey(PageMap.SETTINGS_AI_AGENT_VIEW, 2)}
           element={
             <SettingsAIAgentView
               {...props}
               pageRoute={RouteMap[PageMap.SETTINGS_AI_AGENT_VIEW] as Route}
+            />
+          }
+        />
+
+        <PageRoute
+          path={RouteUtil.getLastPathForKey(
+            PageMap.SETTINGS_CLOUDFLARE_INTEGRATION_VIEW,
+            2,
+          )}
+          element={
+            <SettingsCloudflareIntegrationView
+              {...props}
+              pageRoute={
+                RouteMap[PageMap.SETTINGS_CLOUDFLARE_INTEGRATION_VIEW] as Route
+              }
             />
           }
         />

@@ -717,6 +717,8 @@ export const SettingsRoutePath: Dictionary<string> = {
   [PageMap.SETTINGS_TELEMETRY_INGESTION_KEYS]: `telemetry-ingestion-keys`,
   [PageMap.SETTINGS_TELEMETRY_INGESTION_KEY_VIEW]: `telemetry-ingestion-keys/${RouteParams.ModelID}`,
   [PageMap.SETTINGS_TELEMETRY_SETTINGS]: `telemetry-settings`,
+  [PageMap.SETTINGS_CLOUDFLARE_INTEGRATIONS]: `cloudflare-integrations`,
+  [PageMap.SETTINGS_CLOUDFLARE_INTEGRATION_VIEW]: `cloudflare-integrations/${RouteParams.ModelID}`,
   [PageMap.SETTINGS_SLACK_INTEGRATION]: "slack-integration",
   [PageMap.SETTINGS_MICROSOFT_TEAMS_INTEGRATION]: "microsoft-teams-integration",
 
@@ -4701,6 +4703,18 @@ const RouteMap: Dictionary<Route> = {
   [PageMap.SETTINGS_TELEMETRY_INGESTION_KEY_VIEW]: new Route(
     `/dashboard/${RouteParams.ProjectID}/settings/${
       SettingsRoutePath[PageMap.SETTINGS_TELEMETRY_INGESTION_KEY_VIEW]
+    }`,
+  ),
+
+  [PageMap.SETTINGS_CLOUDFLARE_INTEGRATIONS]: new Route(
+    `/dashboard/${RouteParams.ProjectID}/settings/${
+      SettingsRoutePath[PageMap.SETTINGS_CLOUDFLARE_INTEGRATIONS]
+    }`,
+  ),
+
+  [PageMap.SETTINGS_CLOUDFLARE_INTEGRATION_VIEW]: new Route(
+    `/dashboard/${RouteParams.ProjectID}/settings/${
+      SettingsRoutePath[PageMap.SETTINGS_CLOUDFLARE_INTEGRATION_VIEW]
     }`,
   ),
 

@@ -34,9 +34,6 @@ import {
   getClickhouseLocalTableSizes,
   ClickhouseLocalTableSize,
 } from "Common/Server/Utils/AnalyticsDatabase/ClickhouseCapacity";
-import InstanceHealthLogService from "Common/Server/Services/InstanceHealthLogService";
-import InstanceHealthLog from "Common/Models/DatabaseModels/InstanceHealthLog";
-import SortOrder from "Common/Types/BaseDatabase/SortOrder";
 
 const router: ExpressRouter = Express.getRouter();
 
@@ -46,7 +43,6 @@ const router: ExpressRouter = Express.getRouter();
  */
 const CACHE_TTL_MS: number = 15000;
 let overviewCache: { data: JSONObject; expiresAt: number } | null = null;
-let queuesCache: { data: JSONObject; expiresAt: number } | null = null;
 
 type ClickhouseJsonResult = { data: Array<JSONObject> };
 
@@ -3320,7 +3316,6 @@ router.get(
     next: NextFunction,
   ): Promise<void> => {
     try {
-
       const requestedQueue: string = String(req.params["queueName"]);
 
       // Only allow the known queue names — never feed arbitrary input to BullMQ.
@@ -3366,7 +3361,6 @@ router.get(
     next: NextFunction,
   ): Promise<void> => {
     try {
-
       const data: JSONObject = await getDiagnosticLogs();
       return Response.sendJsonObjectResponse(req, res, data);
     } catch (err) {
@@ -3393,7 +3387,6 @@ router.get(
     next: NextFunction,
   ): Promise<void> => {
     try {
-
       const diagnostics: JSONObject = await getClickhouseDiagnostics();
       const clusterHealth: JSONObject = (diagnostics["clusterHealth"] ||
         {}) as JSONObject;
@@ -3423,7 +3416,6 @@ router.get(
     next: NextFunction,
   ): Promise<void> => {
     try {
-
       const data: JSONObject = await getClickhouseTelemetryIngestion();
       return Response.sendJsonObjectResponse(req, res, data);
     } catch (err) {
@@ -3449,14 +3441,6 @@ router.get(
     next: NextFunction,
   ): Promise<void> => {
     try {
-      if (!IsEnterpriseEdition) {
-        throw new PaymentRequiredException(
-          "The OneUptime Health dashboard is only available on the OneUptime Enterprise Edition. " +
-            "Please switch to the Enterprise Edition build to enable this feature. " +
-            "See https://oneuptime.com/enterprise/overview for details.",
-        );
-      }
-
       const data: JSONObject = await getPostgresClusterHealth();
       return Response.sendJsonObjectResponse(req, res, data);
     } catch (err) {
@@ -3482,7 +3466,7 @@ router.get(
     next: NextFunction,
   ): Promise<void> => {
     try {
-      const data: JSONObject = await getPostgresClusterHealth();
+      const data: JSONObject = await getPostgresActivity();
       return Response.sendJsonObjectResponse(req, res, data);
     } catch (err) {
       return next(err);
@@ -3628,7 +3612,6 @@ const QUERY_REDIS_TIMEOUT_MS: number = 15000;
 const QUERY_REDIS_MAX_COMMANDS: number = 50;
 
 type QueryEngine = "postgres" | "clickhouse" | "redis";
-
 
 // Clamp a requested row limit into [1, QUERY_MAX_ROWS]; default QUERY_DEFAULT_ROWS.
 function resolveRowLimit(value: unknown): number {

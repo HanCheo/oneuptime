@@ -180,6 +180,7 @@ import AIRun from "./AIRun";
 import AIRunEvent from "./AIRunEvent";
 import AIInsight from "./AIInsight";
 import LlmProvider from "./LlmProvider";
+import CloudflareIntegration from "./CloudflareIntegration";
 import LlmLog from "./LlmLog";
 import Project from "./Project";
 import ProjectCallSMSConfig from "./ProjectCallSMSConfig";
@@ -732,6 +733,7 @@ const AllModelTypes: Array<{
   AIInsight,
 
   LlmProvider,
+  CloudflareIntegration,
   LlmLog,
 
   UserSession,

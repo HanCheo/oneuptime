@@ -240,13 +240,6 @@ const DashboardSideMenu: FunctionComponent<ComponentProps> = (
       <SideMenuSection title="Advanced">
         <SideMenuItem
           link={{
-            title: "Code Repositories",
-            to: toServiceRoute(PageMap.SERVICE_VIEW_CODE_REPOSITORIES),
-          }}
-          icon={IconProp.Code}
-        />
-        <SideMenuItem
-          link={{
             title: "Settings",
             to: toServiceRoute(PageMap.SERVICE_VIEW_SETTINGS),
           }}

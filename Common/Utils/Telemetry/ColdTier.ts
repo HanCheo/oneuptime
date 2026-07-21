@@ -4,10 +4,10 @@ const DEFAULT_DELETE_TTL_EXPRESSION: string = "retentionDate DELETE";
 const DEFAULT_STORAGE_POLICY: string = "tiered";
 const DEFAULT_VOLUME_NAME: string = "s3_cold";
 
-const parsePositiveIntEnv: (
+const parsePositiveIntEnv: (envKey: string, fallback: number) => number = (
   envKey: string,
   fallback: number,
-) => number = (envKey: string, fallback: number): number => {
+): number => {
   const rawValue: string | undefined = process.env[envKey];
 
   if (!rawValue) {
@@ -25,14 +25,15 @@ export const isClickhouseColdTierEnabled: () => boolean = (): boolean => {
   return process.env["CLICKHOUSE_COLD_TIER_ENABLED"] === "true";
 };
 
-export const getClickhouseColdTierStoragePolicy: () => string | undefined = (): string | undefined => {
+export const getClickhouseColdTierStoragePolicy: () => string | undefined = ():
+  | string
+  | undefined => {
   if (!isClickhouseColdTierEnabled()) {
     return undefined;
   }
 
   return (
-    process.env["CLICKHOUSE_COLD_TIER_STORAGE_POLICY"] ||
-    DEFAULT_STORAGE_POLICY
+    process.env["CLICKHOUSE_COLD_TIER_STORAGE_POLICY"] || DEFAULT_STORAGE_POLICY
   );
 };
 
