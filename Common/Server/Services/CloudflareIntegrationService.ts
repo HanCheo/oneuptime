@@ -46,6 +46,7 @@ export class Service extends DatabaseService<Model> {
       updateBy.data.pollIntervalInMinutes = this.normalizePollInterval(
         updateBy.data.pollIntervalInMinutes,
       );
+      updateBy.data.nextSyncAt = OneUptimeDate.getCurrentDate();
     }
 
     return { updateBy, carryForward: null };

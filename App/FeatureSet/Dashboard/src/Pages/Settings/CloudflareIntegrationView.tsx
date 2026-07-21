@@ -4,13 +4,21 @@ import PageComponentProps from "../PageComponentProps";
 import Route from "Common/Types/API/Route";
 import ObjectID from "Common/Types/ObjectID";
 import FormFieldSchemaType from "Common/UI/Components/Forms/Types/FormFieldSchemaType";
-import Field from "Common/UI/Components/Forms/Types/Field";
+import Field, {
+  CustomElementProps,
+} from "Common/UI/Components/Forms/Types/Field";
 import { FormStep } from "Common/UI/Components/Forms/Types/FormStep";
+import FormValues from "Common/UI/Components/Forms/Types/FormValues";
+import { JSONValue } from "Common/Types/JSON";
 import ModelDelete from "Common/UI/Components/ModelDelete/ModelDelete";
 import CardModelDetail from "Common/UI/Components/ModelDetail/CardModelDetail";
 import FieldType from "Common/UI/Components/Types/FieldType";
 import Navigation from "Common/UI/Utils/Navigation";
 import CloudflareIntegration from "Common/Models/DatabaseModels/CloudflareIntegration";
+import CloudflareZoneSelector, {
+  CloudflareZoneOption,
+  getCloudflareZoneOption,
+} from "./CloudflareZoneSelector";
 import React, {
   Fragment,
   FunctionComponent,
@@ -61,21 +69,9 @@ const CloudflareIntegrationView: FunctionComponent<PageComponentProps> = (
             },
             {
               field: {
-                cloudflareAccountId: true,
-              },
-              title: "Cloudflare Account ID",
-            },
-            {
-              field: {
-                cloudflareZoneId: true,
-              },
-              title: "Cloudflare Zone ID",
-            },
-            {
-              field: {
                 cloudflareZoneName: true,
               },
-              title: "Cloudflare Zone Name",
+              title: "Cloudflare Zone",
             },
             {
               field: {
@@ -209,33 +205,41 @@ const formFields: Array<Field<CloudflareIntegration>> = [
   },
   {
     field: {
-      cloudflareAccountId: true,
-    },
-    title: "Cloudflare Account ID",
-    stepId: "cloudflare-settings",
-    fieldType: FormFieldSchemaType.Text,
-    required: true,
-    placeholder: "Cloudflare account ID",
-  },
-  {
-    field: {
       cloudflareZoneId: true,
     },
-    title: "Cloudflare Zone ID",
+    title: "Cloudflare Zone",
     stepId: "cloudflare-settings",
-    fieldType: FormFieldSchemaType.Text,
+    fieldType: FormFieldSchemaType.CustomComponent,
     required: true,
-    placeholder: "Cloudflare zone ID",
-  },
-  {
-    field: {
-      cloudflareZoneName: true,
+    description: "Select a zone available to this Cloudflare API token.",
+    getCustomElement: (
+      values: FormValues<CloudflareIntegration>,
+      props: CustomElementProps,
+    ) => {
+      return <CloudflareZoneSelector {...props} values={values} />;
     },
-    title: "Cloudflare Zone Name",
-    stepId: "cloudflare-settings",
-    fieldType: FormFieldSchemaType.Text,
-    required: true,
-    placeholder: "example.com",
+    onChange: (
+      value: JSONValue,
+      currentFormValues: FormValues<CloudflareIntegration>,
+      setNewFormValues: (
+        currentFormValues: FormValues<CloudflareIntegration>,
+      ) => void,
+    ) => {
+      const zone: CloudflareZoneOption | undefined = getCloudflareZoneOption(
+        String(value || ""),
+      );
+
+      if (!zone) {
+        return;
+      }
+
+      setNewFormValues({
+        ...currentFormValues,
+        cloudflareAccountId: zone.accountId,
+        cloudflareZoneId: zone.id,
+        cloudflareZoneName: zone.name,
+      });
+    },
   },
   {
     field: {

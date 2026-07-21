@@ -4,6 +4,8 @@ import { JSONObject } from "Common/Types/JSON";
 const CLOUDFLARE_GRAPHQL_ENDPOINT: string =
   "https://api.cloudflare.com/client/v4/graphql";
 
+const CLOUDFLARE_REST_ENDPOINT: string = "https://api.cloudflare.com/client/v4";
+
 export interface CloudflareMetricSelection {
   collectWebAnalyticsMetrics?: boolean | undefined;
   collectDnsMetrics?: boolean | undefined;
@@ -89,6 +91,29 @@ export interface CloudflareMetricsResult {
   realtimeWebRows: Array<CloudflareRealtimeWebMetricRow>;
 }
 
+export interface CloudflareZone {
+  id: string;
+  name: string;
+  accountId: string;
+}
+
+interface CloudflareZoneResponse {
+  result?: Array<{
+    id?: string | undefined;
+    name?: string | undefined;
+    account?: {
+      id?: string | undefined;
+    };
+  }>;
+  result_info?: {
+    page?: number | undefined;
+    total_pages?: number | undefined;
+  };
+  errors?: Array<{
+    message?: string;
+  }>;
+}
+
 interface CloudflareGraphQLZone {
   httpRequests1mGroups?: Array<CloudflareWebMetricRow> | undefined;
   dnsAnalyticsAdaptiveGroups?: Array<CloudflareDnsMetricRow> | undefined;
@@ -115,6 +140,56 @@ interface CloudflareGraphQLResponse {
 }
 
 export default class CloudflareGraphQLClient {
+  public static async getZones(
+    apiToken: string,
+  ): Promise<Array<CloudflareZone>> {
+    const zones: Array<CloudflareZone> = [];
+    let page: number = 1;
+    let totalPages: number = 1;
+
+    do {
+      const response: AxiosResponse<CloudflareZoneResponse> = await axios.get(
+        `${CLOUDFLARE_REST_ENDPOINT}/zones`,
+        {
+          headers: {
+            Authorization: `Bearer ${apiToken}`,
+            "Content-Type": "application/json",
+          },
+          params: {
+            page: page,
+            per_page: 50,
+          },
+          timeout: 30_000,
+        },
+      );
+
+      if (response.data.errors && response.data.errors.length > 0) {
+        throw new Error(
+          response.data.errors
+            .map((error: { message?: string }) => {
+              return error.message || "Unknown Cloudflare API error";
+            })
+            .join("; "),
+        );
+      }
+
+      for (const zone of response.data.result || []) {
+        if (zone.id && zone.name && zone.account?.id) {
+          zones.push({
+            id: zone.id,
+            name: zone.name,
+            accountId: zone.account.id,
+          });
+        }
+      }
+
+      totalPages = response.data.result_info?.total_pages || page;
+      page = page + 1;
+    } while (page <= totalPages);
+
+    return zones;
+  }
+
   public static async getMetrics(data: {
     apiToken: string;
     zoneId: string;
