@@ -4,30 +4,27 @@ import { JSONObject } from "Common/Types/JSON";
 const CLOUDFLARE_GRAPHQL_ENDPOINT: string =
   "https://api.cloudflare.com/client/v4/graphql";
 
-const HTTP_REQUESTS_QUERY: string = `query OneUptimeCloudflareHttpMetrics($zoneTag: string, $start: Time, $end: Time) {
-  viewer {
-    zones(filter: { zoneTag: $zoneTag }) {
-      httpRequestsAdaptiveGroups(
-        limit: 10000
-        filter: { datetime_geq: $start, datetime_lt: $end }
-        orderBy: [datetimeMinute_ASC]
-      ) {
-        count
-        dimensions {
-          datetimeMinute
-          clientRequestHTTPHost
-          edgeResponseStatus
-          cacheStatus
-        }
-        sum {
-          edgeResponseBytes
-        }
-      }
-    }
-  }
-}`;
+export interface CloudflareMetricSelection {
+  collectWebAnalyticsMetrics?: boolean | undefined;
+  collectDnsMetrics?: boolean | undefined;
+  collectLoadBalancerMetrics?: boolean | undefined;
+  collectWorkerScriptMetrics?: boolean | undefined;
+  collectRealtimeWebAnalyticsMetrics?: boolean | undefined;
+}
 
-export interface CloudflareHttpMetricRow {
+export interface CloudflareWebMetricRow {
+  dimensions?: {
+    datetimeMinute?: string | undefined;
+  };
+  sum?: {
+    requests?: number | string | undefined;
+    bytes?: number | string | undefined;
+    cachedRequests?: number | string | undefined;
+    cachedBytes?: number | string | undefined;
+  };
+}
+
+export interface CloudflareRealtimeWebMetricRow {
   count?: number | string | undefined;
   dimensions?: {
     datetimeMinute?: string | undefined;
@@ -40,12 +37,76 @@ export interface CloudflareHttpMetricRow {
   };
 }
 
+export interface CloudflareDnsMetricRow {
+  count?: number | string | undefined;
+  dimensions?: {
+    datetimeMinute?: string | undefined;
+    queryType?: string | undefined;
+    responseCode?: string | undefined;
+    responseCached?: number | string | undefined;
+  };
+  sum?: {
+    countNotCachedAndNotStale?: number | string | undefined;
+    countStale?: number | string | undefined;
+  };
+}
+
+export interface CloudflareLoadBalancerMetricRow {
+  count?: number | string | undefined;
+  dimensions?: {
+    datetimeMinute?: string | undefined;
+    lbName?: string | undefined;
+    selectedPoolName?: string | undefined;
+    selectedOriginName?: string | undefined;
+    errorType?: string | undefined;
+  };
+  sum?: {
+    ruleMatches?: number | string | undefined;
+    totalRequestsWithRule?: number | string | undefined;
+  };
+}
+
+export interface CloudflareWorkerMetricRow {
+  dimensions?: {
+    datetimeMinute?: string | undefined;
+    constantScriptId?: string | undefined;
+    status?: string | undefined;
+    httpResponseStatus?: number | string | undefined;
+  };
+  sum?: {
+    requests?: number | string | undefined;
+    responseBodySize?: number | string | undefined;
+    subrequests?: number | string | undefined;
+    totalCpuTime?: number | string | undefined;
+  };
+}
+
+export interface CloudflareMetricsResult {
+  webRows: Array<CloudflareWebMetricRow>;
+  dnsRows: Array<CloudflareDnsMetricRow>;
+  loadBalancerRows: Array<CloudflareLoadBalancerMetricRow>;
+  workerRows: Array<CloudflareWorkerMetricRow>;
+  realtimeWebRows: Array<CloudflareRealtimeWebMetricRow>;
+}
+
+interface CloudflareGraphQLZone {
+  httpRequests1mGroups?: Array<CloudflareWebMetricRow> | undefined;
+  dnsAnalyticsAdaptiveGroups?: Array<CloudflareDnsMetricRow> | undefined;
+  loadBalancingRequestsAdaptiveGroups?:
+    | Array<CloudflareLoadBalancerMetricRow>
+    | undefined;
+  workersZoneInvocationsAdaptiveGroups?:
+    | Array<CloudflareWorkerMetricRow>
+    | undefined;
+  httpRequestsAdaptiveGroups?:
+    | Array<CloudflareRealtimeWebMetricRow>
+    | undefined;
+}
+
 interface CloudflareGraphQLResponse {
   data?: {
     viewer?: {
-      zones?: Array<{
-        httpRequestsAdaptiveGroups?: Array<CloudflareHttpMetricRow>;
-      }>;
+      zones?: Array<CloudflareGraphQLZone>;
     };
   };
   errors?: Array<{
@@ -54,16 +115,29 @@ interface CloudflareGraphQLResponse {
 }
 
 export default class CloudflareGraphQLClient {
-  public static async getHttpMetrics(data: {
+  public static async getMetrics(data: {
     apiToken: string;
     zoneId: string;
     start: Date;
     end: Date;
-  }): Promise<Array<CloudflareHttpMetricRow>> {
+    selection: CloudflareMetricSelection;
+  }): Promise<CloudflareMetricsResult> {
+    const queryBody: string = this.buildQuery(data.selection);
+
+    if (!queryBody) {
+      return this.emptyResult();
+    }
+
     const response: AxiosResponse<CloudflareGraphQLResponse> = await axios.post(
       CLOUDFLARE_GRAPHQL_ENDPOINT,
       {
-        query: HTTP_REQUESTS_QUERY,
+        query: `query OneUptimeCloudflareMetrics($zoneTag: string, $start: Time, $end: Time) {
+          viewer {
+            zones(filter: { zoneTag: $zoneTag }) {
+              ${queryBody}
+            }
+          }
+        }`,
         variables: {
           zoneTag: data.zoneId,
           start: data.start.toISOString(),
@@ -89,22 +163,102 @@ export default class CloudflareGraphQLClient {
       );
     }
 
-    const zones:
-      | Array<{
-          httpRequestsAdaptiveGroups?: Array<CloudflareHttpMetricRow>;
-        }>
-      | undefined = response.data.data?.viewer?.zones;
+    const zones: Array<CloudflareGraphQLZone> | undefined =
+      response.data.data?.viewer?.zones;
 
     if (!zones || zones.length === 0) {
-      return [];
+      return this.emptyResult();
     }
 
-    const rows: Array<CloudflareHttpMetricRow> = [];
+    const result: CloudflareMetricsResult = this.emptyResult();
+
     for (const zone of zones) {
-      rows.push(...(zone.httpRequestsAdaptiveGroups || []));
+      result.webRows.push(...(zone.httpRequests1mGroups || []));
+      result.dnsRows.push(...(zone.dnsAnalyticsAdaptiveGroups || []));
+      result.loadBalancerRows.push(
+        ...(zone.loadBalancingRequestsAdaptiveGroups || []),
+      );
+      result.workerRows.push(
+        ...(zone.workersZoneInvocationsAdaptiveGroups || []),
+      );
+      result.realtimeWebRows.push(...(zone.httpRequestsAdaptiveGroups || []));
     }
 
-    return rows;
+    return result;
+  }
+
+  private static buildQuery(selection: CloudflareMetricSelection): string {
+    const queryParts: Array<string> = [];
+
+    if (selection.collectWebAnalyticsMetrics !== false) {
+      queryParts.push(`httpRequests1mGroups(
+        limit: 10000
+        filter: { datetime_geq: $start, datetime_lt: $end }
+        orderBy: [datetimeMinute_ASC]
+      ) {
+        dimensions { datetimeMinute }
+        sum { requests bytes cachedRequests cachedBytes }
+      }`);
+    }
+
+    if (selection.collectDnsMetrics) {
+      queryParts.push(`dnsAnalyticsAdaptiveGroups(
+        limit: 10000
+        filter: { datetime_geq: $start, datetime_lt: $end }
+        orderBy: [datetimeMinute_ASC]
+      ) {
+        count
+        dimensions { datetimeMinute queryType responseCode responseCached }
+        sum { countNotCachedAndNotStale countStale }
+      }`);
+    }
+
+    if (selection.collectLoadBalancerMetrics) {
+      queryParts.push(`loadBalancingRequestsAdaptiveGroups(
+        limit: 10000
+        filter: { datetime_geq: $start, datetime_lt: $end }
+        orderBy: [datetimeMinute_ASC]
+      ) {
+        count
+        dimensions { datetimeMinute lbName selectedPoolName selectedOriginName errorType }
+        sum { ruleMatches totalRequestsWithRule }
+      }`);
+    }
+
+    if (selection.collectWorkerScriptMetrics) {
+      queryParts.push(`workersZoneInvocationsAdaptiveGroups(
+        limit: 10000
+        filter: { datetime_geq: $start, datetime_lt: $end }
+        orderBy: [datetimeMinute_ASC]
+      ) {
+        dimensions { datetimeMinute constantScriptId status httpResponseStatus }
+        sum { requests responseBodySize subrequests totalCpuTime }
+      }`);
+    }
+
+    if (selection.collectRealtimeWebAnalyticsMetrics) {
+      queryParts.push(`httpRequestsAdaptiveGroups(
+        limit: 10000
+        filter: { datetime_geq: $start, datetime_lt: $end }
+        orderBy: [datetimeMinute_ASC]
+      ) {
+        count
+        dimensions { datetimeMinute clientRequestHTTPHost edgeResponseStatus cacheStatus }
+        sum { edgeResponseBytes }
+      }`);
+    }
+
+    return queryParts.join("\n");
+  }
+
+  private static emptyResult(): CloudflareMetricsResult {
+    return {
+      webRows: [],
+      dnsRows: [],
+      loadBalancerRows: [],
+      workerRows: [],
+      realtimeWebRows: [],
+    };
   }
 }
 

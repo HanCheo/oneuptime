@@ -249,6 +249,56 @@ const formFields: Array<Field<CloudflareIntegration>> = [
   },
   {
     field: {
+      collectWebAnalyticsMetrics: true,
+    },
+    title: "Collect Web Analytics Metrics",
+    stepId: "polling",
+    fieldType: FormFieldSchemaType.Toggle,
+    required: false,
+    description: "Collect Cloudflare web request and bandwidth metrics.",
+  },
+  {
+    field: {
+      collectDnsMetrics: true,
+    },
+    title: "Collect DNS Metrics",
+    stepId: "polling",
+    fieldType: FormFieldSchemaType.Toggle,
+    required: false,
+    description: "Collect Cloudflare DNS query metrics.",
+  },
+  {
+    field: {
+      collectLoadBalancerMetrics: true,
+    },
+    title: "Collect Load Balancer Metrics",
+    stepId: "polling",
+    fieldType: FormFieldSchemaType.Toggle,
+    required: false,
+    description: "Collect Cloudflare load balancer request metrics.",
+  },
+  {
+    field: {
+      collectWorkerScriptMetrics: true,
+    },
+    title: "Collect Worker Script Metrics",
+    stepId: "polling",
+    fieldType: FormFieldSchemaType.Toggle,
+    required: false,
+    description: "Collect Cloudflare Workers invocation metrics.",
+  },
+  {
+    field: {
+      collectRealtimeWebAnalyticsMetrics: true,
+    },
+    title: "Collect Realtime Web Analytics Metrics",
+    stepId: "polling",
+    fieldType: FormFieldSchemaType.Toggle,
+    required: false,
+    description: "Collect sampled Cloudflare realtime web analytics metrics.",
+  },
+  {
+    field: {
       pollIntervalInMinutes: true,
     },
     title: "Poll Interval in Minutes",

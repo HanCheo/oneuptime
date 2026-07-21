@@ -8,7 +8,7 @@ import { TelemetryRequest } from "Common/Server/Middleware/TelemetryIngest";
 import QueryDeepPartialEntity from "Common/Types/Database/PartialEntity";
 import MetricsQueueService from "../../../Telemetry/Services/Queue/TelemetryQueueService";
 import CloudflareGraphQLClient, {
-  CloudflareHttpMetricRow,
+  CloudflareMetricsResult,
   cloudflareErrorMessage,
 } from "../../Utils/Cloudflare/CloudflareGraphQLClient";
 import CloudflareMetricsAdapter, {
@@ -41,6 +41,11 @@ RunCron(
           cloudflareZoneId: true,
           cloudflareZoneName: true,
           pollIntervalInMinutes: true,
+          collectWebAnalyticsMetrics: true,
+          collectDnsMetrics: true,
+          collectLoadBalancerMetrics: true,
+          collectWorkerScriptMetrics: true,
+          collectRealtimeWebAnalyticsMetrics: true,
           lastSyncedAt: true,
         },
         limit: CLOUDFLARE_POLL_BATCH_SIZE,
@@ -88,18 +93,26 @@ async function pullIntegrationMetrics(data: {
       return;
     }
 
-    const rows: Array<CloudflareHttpMetricRow> =
-      await CloudflareGraphQLClient.getHttpMetrics({
+    const metricsResult: CloudflareMetricsResult =
+      await CloudflareGraphQLClient.getMetrics({
         apiToken: integration.cloudflareApiToken,
         zoneId: integration.cloudflareZoneId,
         start,
         end,
+        selection: {
+          collectWebAnalyticsMetrics: integration.collectWebAnalyticsMetrics,
+          collectDnsMetrics: integration.collectDnsMetrics,
+          collectLoadBalancerMetrics: integration.collectLoadBalancerMetrics,
+          collectWorkerScriptMetrics: integration.collectWorkerScriptMetrics,
+          collectRealtimeWebAnalyticsMetrics:
+            integration.collectRealtimeWebAnalyticsMetrics,
+        },
       });
 
     const adapterResult: CloudflareAdapterResult =
       CloudflareMetricsAdapter.buildOtlpMetrics({
         integration,
-        rows,
+        metricsResult,
         start,
         end,
       });

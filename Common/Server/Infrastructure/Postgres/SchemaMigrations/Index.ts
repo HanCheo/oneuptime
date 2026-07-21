@@ -468,6 +468,7 @@ import { AddEnterpriseLicenseNotificationColumns1784218257664 } from "./17842182
 import { AddAttributionColumnsToUserAndProject1784293516000 } from "./1784293516000-AddAttributionColumnsToUserAndProject";
 import { AddMarketingConversionTable1784298000000 } from "./1784298000000-AddMarketingConversionTable";
 import { MigrationName1784614048785 } from "./1784614048785-MigrationName";
+import { MigrationName1784644693021 } from "./1784644693021-MigrationName";
 
 export default [
   InitialMigration,
@@ -940,4 +941,5 @@ export default [
   AddAttributionColumnsToUserAndProject1784293516000,
   AddMarketingConversionTable1784298000000,
   MigrationName1784614048785,
+  MigrationName1784644693021,
 ];

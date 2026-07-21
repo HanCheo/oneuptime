@@ -244,6 +244,101 @@ export default class CloudflareIntegration extends BaseModel {
   })
   @TableColumn({
     required: true,
+    type: TableColumnType.Boolean,
+    title: "Collect Web Analytics Metrics",
+    description: "Collect Cloudflare web request and bandwidth metrics.",
+    canReadOnRelationQuery: true,
+  })
+  @Column({
+    nullable: false,
+    type: ColumnType.Boolean,
+    default: true,
+  })
+  public collectWebAnalyticsMetrics?: boolean = true;
+
+  @ColumnAccessControl({
+    create: adminPermissions,
+    read: readPermissions,
+    update: adminPermissions,
+  })
+  @TableColumn({
+    required: true,
+    type: TableColumnType.Boolean,
+    title: "Collect DNS Metrics",
+    description: "Collect Cloudflare DNS query metrics.",
+    canReadOnRelationQuery: true,
+  })
+  @Column({
+    nullable: false,
+    type: ColumnType.Boolean,
+    default: false,
+  })
+  public collectDnsMetrics?: boolean = false;
+
+  @ColumnAccessControl({
+    create: adminPermissions,
+    read: readPermissions,
+    update: adminPermissions,
+  })
+  @TableColumn({
+    required: true,
+    type: TableColumnType.Boolean,
+    title: "Collect Load Balancer Metrics",
+    description: "Collect Cloudflare load balancer request metrics.",
+    canReadOnRelationQuery: true,
+  })
+  @Column({
+    nullable: false,
+    type: ColumnType.Boolean,
+    default: false,
+  })
+  public collectLoadBalancerMetrics?: boolean = false;
+
+  @ColumnAccessControl({
+    create: adminPermissions,
+    read: readPermissions,
+    update: adminPermissions,
+  })
+  @TableColumn({
+    required: true,
+    type: TableColumnType.Boolean,
+    title: "Collect Worker Script Metrics",
+    description: "Collect Cloudflare Workers invocation metrics.",
+    canReadOnRelationQuery: true,
+  })
+  @Column({
+    nullable: false,
+    type: ColumnType.Boolean,
+    default: false,
+  })
+  public collectWorkerScriptMetrics?: boolean = false;
+
+  @ColumnAccessControl({
+    create: adminPermissions,
+    read: readPermissions,
+    update: adminPermissions,
+  })
+  @TableColumn({
+    required: true,
+    type: TableColumnType.Boolean,
+    title: "Collect Realtime Web Analytics Metrics",
+    description: "Collect sampled Cloudflare realtime web analytics metrics.",
+    canReadOnRelationQuery: true,
+  })
+  @Column({
+    nullable: false,
+    type: ColumnType.Boolean,
+    default: false,
+  })
+  public collectRealtimeWebAnalyticsMetrics?: boolean = false;
+
+  @ColumnAccessControl({
+    create: adminPermissions,
+    read: readPermissions,
+    update: adminPermissions,
+  })
+  @TableColumn({
+    required: true,
     type: TableColumnType.Number,
     title: "Poll Interval (Minutes)",
     description: "How often OneUptime should poll Cloudflare for new metrics.",

@@ -1,6 +1,13 @@
 import CloudflareIntegration from "Common/Models/DatabaseModels/CloudflareIntegration";
 import { JSONArray, JSONObject } from "Common/Types/JSON";
-import { CloudflareHttpMetricRow } from "./CloudflareGraphQLClient";
+import {
+  CloudflareDnsMetricRow,
+  CloudflareLoadBalancerMetricRow,
+  CloudflareMetricsResult,
+  CloudflareRealtimeWebMetricRow,
+  CloudflareWebMetricRow,
+  CloudflareWorkerMetricRow,
+} from "./CloudflareGraphQLClient";
 
 const OTEL_DELTA_TEMPORALITY: string = "AGGREGATION_TEMPORALITY_DELTA";
 const NANOS_PER_MILLISECOND: bigint = BigInt(1000000);
@@ -11,50 +18,36 @@ export interface CloudflareAdapterResult {
   syncedUntil: Date;
 }
 
+interface MetricPoint {
+  name: string;
+  unit: string;
+  value: number | string | undefined;
+  timeUnixNano: string;
+  attributes: JSONArray;
+}
+
 export default class CloudflareMetricsAdapter {
   public static buildOtlpMetrics(data: {
     integration: CloudflareIntegration;
-    rows: Array<CloudflareHttpMetricRow>;
+    metricsResult: CloudflareMetricsResult;
     start: Date;
     end: Date;
   }): CloudflareAdapterResult {
     const metrics: JSONArray = [];
 
-    for (const row of data.rows) {
-      const metricTime: Date = row.dimensions?.datetimeMinute
-        ? new Date(row.dimensions.datetimeMinute)
-        : data.end;
-      const timeUnixNano: string = this.toUnixNanoString(metricTime);
-      const attributes: JSONArray = this.buildDatapointAttributes(row);
-
-      const requestCount: number | null = this.toFiniteNumber(row.count);
-      if (requestCount !== null) {
-        metrics.push(
-          this.buildSumMetric({
-            name: "cloudflare.requests",
-            unit: "1",
-            value: requestCount,
-            timeUnixNano,
-            attributes,
-          }),
-        );
-      }
-
-      const bandwidthBytes: number | null = this.toFiniteNumber(
-        row.sum?.edgeResponseBytes,
-      );
-      if (bandwidthBytes !== null) {
-        metrics.push(
-          this.buildSumMetric({
-            name: "cloudflare.bandwidth.bytes",
-            unit: "By",
-            value: bandwidthBytes,
-            timeUnixNano,
-            attributes,
-          }),
-        );
-      }
-    }
+    this.addWebMetrics(metrics, data.metricsResult.webRows, data.end);
+    this.addDnsMetrics(metrics, data.metricsResult.dnsRows, data.end);
+    this.addLoadBalancerMetrics(
+      metrics,
+      data.metricsResult.loadBalancerRows,
+      data.end,
+    );
+    this.addWorkerMetrics(metrics, data.metricsResult.workerRows, data.end);
+    this.addRealtimeWebMetrics(
+      metrics,
+      data.metricsResult.realtimeWebRows,
+      data.end,
+    );
 
     return {
       deduplicationKey: `cloudflare:${data.integration.id?.toString()}:${data.integration.cloudflareZoneId}:${data.start.toISOString()}:${data.end.toISOString()}`,
@@ -97,6 +90,285 @@ export default class CloudflareMetricsAdapter {
     };
   }
 
+  private static addWebMetrics(
+    metrics: JSONArray,
+    rows: Array<CloudflareWebMetricRow>,
+    fallbackEnd: Date,
+  ): void {
+    for (const row of rows) {
+      const timeUnixNano: string = this.toUnixNanoString(
+        this.metricTime(row.dimensions?.datetimeMinute, fallbackEnd),
+      );
+      const attributes: JSONArray = [
+        this.stringAttribute("cloudflare.metric_source", "web"),
+      ];
+
+      this.pushSum(metrics, {
+        name: "cloudflare.requests",
+        unit: "1",
+        value: row.sum?.requests,
+        timeUnixNano,
+        attributes,
+      });
+      this.pushSum(metrics, {
+        name: "cloudflare.bandwidth.bytes",
+        unit: "By",
+        value: row.sum?.bytes,
+        timeUnixNano,
+        attributes,
+      });
+      this.pushSum(metrics, {
+        name: "cloudflare.cached_requests",
+        unit: "1",
+        value: row.sum?.cachedRequests,
+        timeUnixNano,
+        attributes,
+      });
+      this.pushSum(metrics, {
+        name: "cloudflare.cached_bandwidth.bytes",
+        unit: "By",
+        value: row.sum?.cachedBytes,
+        timeUnixNano,
+        attributes,
+      });
+    }
+  }
+
+  private static addDnsMetrics(
+    metrics: JSONArray,
+    rows: Array<CloudflareDnsMetricRow>,
+    fallbackEnd: Date,
+  ): void {
+    for (const row of rows) {
+      const timeUnixNano: string = this.toUnixNanoString(
+        this.metricTime(row.dimensions?.datetimeMinute, fallbackEnd),
+      );
+      const attributes: JSONArray = [
+        this.stringAttribute("cloudflare.metric_source", "dns"),
+      ];
+
+      this.addOptionalStringAttribute(
+        attributes,
+        "dns.question.type",
+        row.dimensions?.queryType,
+      );
+      this.addOptionalStringAttribute(
+        attributes,
+        "cloudflare.dns.response_code",
+        row.dimensions?.responseCode,
+      );
+      this.addOptionalNumberAttribute(
+        attributes,
+        "cloudflare.dns.response_cached",
+        row.dimensions?.responseCached,
+      );
+
+      this.pushSum(metrics, {
+        name: "cloudflare.dns.queries",
+        unit: "1",
+        value: row.count,
+        timeUnixNano,
+        attributes,
+      });
+      this.pushSum(metrics, {
+        name: "cloudflare.dns.queries.not_cached",
+        unit: "1",
+        value: row.sum?.countNotCachedAndNotStale,
+        timeUnixNano,
+        attributes,
+      });
+      this.pushSum(metrics, {
+        name: "cloudflare.dns.queries.stale",
+        unit: "1",
+        value: row.sum?.countStale,
+        timeUnixNano,
+        attributes,
+      });
+    }
+  }
+
+  private static addLoadBalancerMetrics(
+    metrics: JSONArray,
+    rows: Array<CloudflareLoadBalancerMetricRow>,
+    fallbackEnd: Date,
+  ): void {
+    for (const row of rows) {
+      const timeUnixNano: string = this.toUnixNanoString(
+        this.metricTime(row.dimensions?.datetimeMinute, fallbackEnd),
+      );
+      const attributes: JSONArray = [
+        this.stringAttribute("cloudflare.metric_source", "load_balancer"),
+      ];
+
+      this.addOptionalStringAttribute(
+        attributes,
+        "cloudflare.load_balancer.name",
+        row.dimensions?.lbName,
+      );
+      this.addOptionalStringAttribute(
+        attributes,
+        "cloudflare.load_balancer.pool.name",
+        row.dimensions?.selectedPoolName,
+      );
+      this.addOptionalStringAttribute(
+        attributes,
+        "cloudflare.load_balancer.origin.name",
+        row.dimensions?.selectedOriginName,
+      );
+      this.addOptionalStringAttribute(
+        attributes,
+        "cloudflare.load_balancer.error_type",
+        row.dimensions?.errorType,
+      );
+
+      this.pushSum(metrics, {
+        name: "cloudflare.load_balancer.requests",
+        unit: "1",
+        value: row.count,
+        timeUnixNano,
+        attributes,
+      });
+      this.pushSum(metrics, {
+        name: "cloudflare.load_balancer.rule_matches",
+        unit: "1",
+        value: row.sum?.ruleMatches,
+        timeUnixNano,
+        attributes,
+      });
+      this.pushSum(metrics, {
+        name: "cloudflare.load_balancer.requests_with_rule",
+        unit: "1",
+        value: row.sum?.totalRequestsWithRule,
+        timeUnixNano,
+        attributes,
+      });
+    }
+  }
+
+  private static addWorkerMetrics(
+    metrics: JSONArray,
+    rows: Array<CloudflareWorkerMetricRow>,
+    fallbackEnd: Date,
+  ): void {
+    for (const row of rows) {
+      const timeUnixNano: string = this.toUnixNanoString(
+        this.metricTime(row.dimensions?.datetimeMinute, fallbackEnd),
+      );
+      const attributes: JSONArray = [
+        this.stringAttribute("cloudflare.metric_source", "worker"),
+      ];
+
+      this.addOptionalStringAttribute(
+        attributes,
+        "cloudflare.worker.script_id",
+        row.dimensions?.constantScriptId,
+      );
+      this.addOptionalStringAttribute(
+        attributes,
+        "cloudflare.worker.status",
+        row.dimensions?.status,
+      );
+      this.addOptionalNumberAttribute(
+        attributes,
+        "http.response.status_code",
+        row.dimensions?.httpResponseStatus,
+      );
+
+      this.pushSum(metrics, {
+        name: "cloudflare.workers.requests",
+        unit: "1",
+        value: row.sum?.requests,
+        timeUnixNano,
+        attributes,
+      });
+      this.pushSum(metrics, {
+        name: "cloudflare.workers.subrequests",
+        unit: "1",
+        value: row.sum?.subrequests,
+        timeUnixNano,
+        attributes,
+      });
+      this.pushSum(metrics, {
+        name: "cloudflare.workers.response_body.bytes",
+        unit: "By",
+        value: row.sum?.responseBodySize,
+        timeUnixNano,
+        attributes,
+      });
+      this.pushSum(metrics, {
+        name: "cloudflare.workers.cpu_time",
+        unit: "us",
+        value: row.sum?.totalCpuTime,
+        timeUnixNano,
+        attributes,
+      });
+    }
+  }
+
+  private static addRealtimeWebMetrics(
+    metrics: JSONArray,
+    rows: Array<CloudflareRealtimeWebMetricRow>,
+    fallbackEnd: Date,
+  ): void {
+    for (const row of rows) {
+      const timeUnixNano: string = this.toUnixNanoString(
+        this.metricTime(row.dimensions?.datetimeMinute, fallbackEnd),
+      );
+      const attributes: JSONArray = [
+        this.stringAttribute("cloudflare.metric_source", "realtime_web"),
+      ];
+
+      this.addOptionalStringAttribute(
+        attributes,
+        "cloudflare.host",
+        row.dimensions?.clientRequestHTTPHost,
+      );
+      this.addOptionalStringAttribute(
+        attributes,
+        "cloudflare.cache_status",
+        row.dimensions?.cacheStatus,
+      );
+      this.addOptionalNumberAttribute(
+        attributes,
+        "http.response.status_code",
+        row.dimensions?.edgeResponseStatus,
+      );
+
+      this.pushSum(metrics, {
+        name: "cloudflare.realtime.requests",
+        unit: "1",
+        value: row.count,
+        timeUnixNano,
+        attributes,
+      });
+      this.pushSum(metrics, {
+        name: "cloudflare.realtime.bandwidth.bytes",
+        unit: "By",
+        value: row.sum?.edgeResponseBytes,
+        timeUnixNano,
+        attributes,
+      });
+    }
+  }
+
+  private static pushSum(metrics: JSONArray, data: MetricPoint): void {
+    const value: number | null = this.toFiniteNumber(data.value);
+
+    if (value === null) {
+      return;
+    }
+
+    metrics.push(
+      this.buildSumMetric({
+        name: data.name,
+        unit: data.unit,
+        value,
+        timeUnixNano: data.timeUnixNano,
+        attributes: data.attributes,
+      }),
+    );
+  }
+
   private static buildSumMetric(data: {
     name: string;
     unit: string;
@@ -121,40 +393,40 @@ export default class CloudflareMetricsAdapter {
     };
   }
 
-  private static buildDatapointAttributes(
-    row: CloudflareHttpMetricRow,
-  ): JSONArray {
-    const attributes: JSONArray = [];
+  private static metricTime(
+    value: string | undefined,
+    fallbackEnd: Date,
+  ): Date {
+    return value ? new Date(value) : fallbackEnd;
+  }
 
-    if (row.dimensions?.clientRequestHTTPHost) {
-      attributes.push(
-        this.stringAttribute(
-          "cloudflare.host",
-          row.dimensions.clientRequestHTTPHost,
-        ),
-      );
+  private static addOptionalStringAttribute(
+    attributes: JSONArray,
+    key: string,
+    value: string | undefined,
+  ): void {
+    if (!value) {
+      return;
     }
 
-    if (row.dimensions?.cacheStatus) {
-      attributes.push(
-        this.stringAttribute(
-          "cloudflare.cache_status",
-          row.dimensions.cacheStatus,
-        ),
-      );
+    attributes.push(this.stringAttribute(key, value));
+  }
+
+  private static addOptionalNumberAttribute(
+    attributes: JSONArray,
+    key: string,
+    value: number | string | undefined,
+  ): void {
+    const numberValue: number | null = this.toFiniteNumber(value);
+
+    if (numberValue === null) {
+      return;
     }
 
-    const statusCode: number | null = this.toFiniteNumber(
-      row.dimensions?.edgeResponseStatus,
-    );
-    if (statusCode !== null) {
-      attributes.push({
-        key: "http.response.status_code",
-        value: { intValue: Math.trunc(statusCode) },
-      });
-    }
-
-    return attributes;
+    attributes.push({
+      key,
+      value: { intValue: Math.trunc(numberValue) },
+    });
   }
 
   private static stringAttribute(key: string, value: string): JSONObject {
