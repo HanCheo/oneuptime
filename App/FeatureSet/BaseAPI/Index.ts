@@ -925,6 +925,9 @@ import AIAgentOwnerUserService, {
 import LlmLogService, {
   Service as LlmLogServiceType,
 } from "Common/Server/Services/LlmLogService";
+import CloudflareIntegrationService, {
+  Service as CloudflareIntegrationServiceType,
+} from "Common/Server/Services/CloudflareIntegrationService";
 
 import ExceptionInstanceService, {
   ExceptionInstanceService as ExceptionInstanceServiceType,
@@ -1168,6 +1171,7 @@ import ProbeOwnerUser from "Common/Models/DatabaseModels/ProbeOwnerUser";
 import AIAgentOwnerTeam from "Common/Models/DatabaseModels/AIAgentOwnerTeam";
 import AIAgentOwnerUser from "Common/Models/DatabaseModels/AIAgentOwnerUser";
 import LlmLog from "Common/Models/DatabaseModels/LlmLog";
+import CloudflareIntegration from "Common/Models/DatabaseModels/CloudflareIntegration";
 import ExceptionInstance from "Common/Models/AnalyticsModels/ExceptionInstance";
 import WorkspaceNotificationLogService, {
   Service as WorkspaceNotificationLogServiceType,
@@ -3983,6 +3987,14 @@ const BaseAPIFeatureSet: FeatureSet = {
     app.use(
       `/${APP_NAME.toLocaleLowerCase()}`,
       new LlmProviderAPI().getRouter(),
+    );
+
+    app.use(
+      `/${APP_NAME.toLocaleLowerCase()}`,
+      new BaseAPI<CloudflareIntegration, CloudflareIntegrationServiceType>(
+        CloudflareIntegration,
+        CloudflareIntegrationService,
+      ).getRouter(),
     );
 
     app.use(
