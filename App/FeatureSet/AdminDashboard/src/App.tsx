@@ -22,115 +22,117 @@ function lazyPage<T extends React.ComponentType<any>>(
   return lazy(loader);
 }
 
-const Init = lazyPage(() => {
+type LazyPage = React.LazyExoticComponent<React.ComponentType<any>>;
+
+const Init: LazyPage = lazyPage(() => {
   return import("./Pages/Init/Init");
 });
-const Health = lazyPage(() => {
+const Health: LazyPage = lazyPage(() => {
   return import("./Pages/Health/Index");
 });
-const HealthPostgres = lazyPage(() => {
+const HealthPostgres: LazyPage = lazyPage(() => {
   return import("./Pages/Health/Postgres");
 });
-const HealthClickhouse = lazyPage(() => {
+const HealthClickhouse: LazyPage = lazyPage(() => {
   return import("./Pages/Health/Clickhouse");
 });
-const HealthQueryConsole = lazyPage(() => {
+const HealthQueryConsole: LazyPage = lazyPage(() => {
   return import("./Pages/Health/QueryConsole");
 });
-const HealthLogs = lazyPage(() => {
+const HealthLogs: LazyPage = lazyPage(() => {
   return import("./Pages/Health/Logs");
 });
-const HealthProbes = lazyPage(() => {
+const HealthProbes: LazyPage = lazyPage(() => {
   return import("./Pages/Health/Probes");
 });
-const HealthMigrations = lazyPage(() => {
+const HealthMigrations: LazyPage = lazyPage(() => {
   return import("./Pages/Health/Migrations");
 });
-const HealthSupportBundle = lazyPage(() => {
+const HealthSupportBundle: LazyPage = lazyPage(() => {
   return import("./Pages/Health/Support");
 });
-const Logout = lazyPage(() => {
+const Logout: LazyPage = lazyPage(() => {
   return import("./Pages/Logout/Logout");
 });
-const Projects = lazyPage(() => {
+const Projects: LazyPage = lazyPage(() => {
   return import("./Pages/Projects/Index");
 });
-const SettingsAPIKey = lazyPage(() => {
+const SettingsAPIKey: LazyPage = lazyPage(() => {
   return import("./Pages/Settings/APIKey/Index");
 });
-const SettingsAuthentication = lazyPage(() => {
+const SettingsAuthentication: LazyPage = lazyPage(() => {
   return import("./Pages/Settings/Authentication/Index");
 });
-const SettingsGlobalSSO = lazyPage(() => {
+const SettingsGlobalSSO: LazyPage = lazyPage(() => {
   return import("./Pages/Settings/GlobalSSO/Index");
 });
-const SettingsGlobalSSOView = lazyPage(() => {
+const SettingsGlobalSSOView: LazyPage = lazyPage(() => {
   return import("./Pages/Settings/GlobalSSO/View");
 });
-const SettingsGlobalOIDC = lazyPage(() => {
+const SettingsGlobalOIDC: LazyPage = lazyPage(() => {
   return import("./Pages/Settings/GlobalOIDC/Index");
 });
-const SettingsGlobalOIDCView = lazyPage(() => {
+const SettingsGlobalOIDCView: LazyPage = lazyPage(() => {
   return import("./Pages/Settings/GlobalOIDC/View");
 });
-const SettingsDataRetention = lazyPage(() => {
+const SettingsDataRetention: LazyPage = lazyPage(() => {
   return import("./Pages/Settings/DataRetention/Index");
 });
-const SettingsCallSMS = lazyPage(() => {
+const SettingsCallSMS: LazyPage = lazyPage(() => {
   return import("./Pages/Settings/CallSMS/Index");
 });
-const SettingsWhatsApp = lazyPage(() => {
+const SettingsWhatsApp: LazyPage = lazyPage(() => {
   return import("./Pages/Settings/WhatsApp/Index");
 });
-const SettingsTelegram = lazyPage(() => {
+const SettingsTelegram: LazyPage = lazyPage(() => {
   return import("./Pages/Settings/Telegram/Index");
 });
-const SettingsEmail = lazyPage(() => {
+const SettingsEmail: LazyPage = lazyPage(() => {
   return import("./Pages/Settings/Email/Index");
 });
-const SettingsProbes = lazyPage(() => {
+const SettingsProbes: LazyPage = lazyPage(() => {
   return import("./Pages/Settings/Probes/Index");
 });
-const SettingsAIAgents = lazyPage(() => {
+const SettingsAIAgents: LazyPage = lazyPage(() => {
   return import("./Pages/Settings/AIAgents/Index");
 });
-const SettingsLlmProviders = lazyPage(() => {
+const SettingsLlmProviders: LazyPage = lazyPage(() => {
   return import("./Pages/Settings/LlmProviders/Index");
 });
-const SendEmail = lazyPage(() => {
+const SendEmail: LazyPage = lazyPage(() => {
   return import("./Pages/SendEmail/Index");
 });
-const MoreEmail = lazyPage(() => {
+const MoreEmail: LazyPage = lazyPage(() => {
   return import("./Pages/More/Email");
 });
-const Users = lazyPage(() => {
+const Users: LazyPage = lazyPage(() => {
   return import("./Pages/Users/Index");
 });
-const UserView = lazyPage(() => {
+const UserView: LazyPage = lazyPage(() => {
   return import("./Pages/Users/View/Index");
 });
-const UserDelete = lazyPage(() => {
+const UserDelete: LazyPage = lazyPage(() => {
   return import("./Pages/Users/View/Delete");
 });
-const UserSettings = lazyPage(() => {
+const UserSettings: LazyPage = lazyPage(() => {
   return import("./Pages/Users/View/Settings");
 });
-const ProjectView = lazyPage(() => {
+const ProjectView: LazyPage = lazyPage(() => {
   return import("./Pages/Projects/View/Index");
 });
-const ProjectDelete = lazyPage(() => {
+const ProjectDelete: LazyPage = lazyPage(() => {
   return import("./Pages/Projects/View/Delete");
 });
-const ProjectUsers = lazyPage(() => {
+const ProjectUsers: LazyPage = lazyPage(() => {
   return import("./Pages/Projects/View/Users");
 });
-const ProjectUserView = lazyPage(() => {
+const ProjectUserView: LazyPage = lazyPage(() => {
   return import("./Pages/Projects/View/UserView");
 });
-const ProjectTeams = lazyPage(() => {
+const ProjectTeams: LazyPage = lazyPage(() => {
   return import("./Pages/Projects/View/Teams");
 });
-const ProjectTeamView = lazyPage(() => {
+const ProjectTeamView: LazyPage = lazyPage(() => {
   return import("./Pages/Projects/View/TeamView");
 });
 

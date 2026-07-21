@@ -106,9 +106,9 @@ export const RECOMMENDED_SERVICE_SCOPE_ATTRIBUTE_DEFINITIONS: Array<RecommendedS
     },
   ];
 
-export const selectedAttributeKeysFromFormValue = (
+export const selectedAttributeKeysFromFormValue: (
   value: unknown,
-): Array<string> => {
+) => Array<string> = (value: unknown): Array<string> => {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -128,7 +128,10 @@ export const selectedAttributeKeysFromFormValue = (
     });
 };
 
-export const getEffectiveAttributeKeys = (
+export const getEffectiveAttributeKeys: (
+  selectedAttributeKeys: Array<string>,
+  defaultAttributeKeys: Array<string>,
+) => Array<string> = (
   selectedAttributeKeys: Array<string>,
   defaultAttributeKeys: Array<string>,
 ): Array<string> => {
@@ -145,7 +148,9 @@ export const getEffectiveAttributeKeys = (
   return Array.from(new Set(defaultAttributeKeys));
 };
 
-export const getRecommendedAttributeDefinition = (
+export const getRecommendedAttributeDefinition: (
+  attributeKey: string,
+) => RecommendedServiceScopeAttributeDefinition | undefined = (
   attributeKey: string,
 ): RecommendedServiceScopeAttributeDefinition | undefined => {
   return RECOMMENDED_SERVICE_SCOPE_ATTRIBUTE_DEFINITIONS.find(
@@ -155,13 +160,15 @@ export const getRecommendedAttributeDefinition = (
   );
 };
 
-export const getAttributeDisplayLabel = (attributeKey: string): string => {
+export const getAttributeDisplayLabel: (attributeKey: string) => string = (
+  attributeKey: string,
+): string => {
   return getRecommendedAttributeDefinition(attributeKey)?.label || attributeKey;
 };
 
-export const formatCompactNumber = (
+export const formatCompactNumber: (
   value: number | null | undefined,
-): string => {
+) => string = (value: number | null | undefined): string => {
   if (value === null || value === undefined) {
     return "—";
   }
@@ -172,7 +179,10 @@ export const formatCompactNumber = (
   }).format(value);
 };
 
-export const getAttributeCoveragePercent = (
+export const getAttributeCoveragePercent: (
+  entry: ServiceScopeAttributeCatalogEntry,
+  activeServiceCount: number,
+) => number | null = (
   entry: ServiceScopeAttributeCatalogEntry,
   activeServiceCount: number,
 ): number | null => {
@@ -187,9 +197,9 @@ export const getAttributeCoveragePercent = (
   return Math.round((entry.activeServiceCount / activeServiceCount) * 100);
 };
 
-export const getSelectorFitLabel = (
+export const getSelectorFitLabel: (
   entry: ServiceScopeAttributeCatalogEntry,
-): string => {
+) => string = (entry: ServiceScopeAttributeCatalogEntry): string => {
   if (entry.distinctValueCount === null) {
     return "Metrics pending";
   }
@@ -213,9 +223,9 @@ export const getSelectorFitLabel = (
   return "High-cardinality selector";
 };
 
-export const getSelectorFitExplanation = (
+export const getSelectorFitExplanation: (
   entry: ServiceScopeAttributeCatalogEntry,
-): string => {
+) => string = (entry: ServiceScopeAttributeCatalogEntry): string => {
   if (entry.distinctValueCount === null) {
     return "This key was observed in traces, but impact metrics are not available from the deployed backend yet.";
   }
@@ -239,7 +249,11 @@ export const getSelectorFitExplanation = (
   return "This key is highly variable. Keep it only if the operational benefit outweighs the extra selector density.";
 };
 
-export const getAttributeOptionDescription = (
+export const getAttributeOptionDescription: (
+  entry: ServiceScopeAttributeCatalogEntry,
+  activeServiceCount: number,
+  lookbackHours: number,
+) => string = (
   entry: ServiceScopeAttributeCatalogEntry,
   activeServiceCount: number,
   lookbackHours: number,
@@ -263,7 +277,10 @@ export const getAttributeOptionDescription = (
   return `${coverageText} · ${valuesText} · ${lookbackText}`;
 };
 
-export const getAttributeImpactSummary = (
+export const getAttributeImpactSummary: (
+  entry: ServiceScopeAttributeCatalogEntry,
+  activeServiceCount: number,
+) => string = (
   entry: ServiceScopeAttributeCatalogEntry,
   activeServiceCount: number,
 ): string => {
@@ -287,7 +304,11 @@ export const getAttributeImpactSummary = (
   } across ${entry.activeServiceCount}/${activeServiceCount} active services (${coveragePercent}% coverage).`;
 };
 
-export const getAttributeDynamicReasons = (
+export const getAttributeDynamicReasons: (
+  entry: ServiceScopeAttributeCatalogEntry,
+  activeServiceCount: number,
+  lookbackHours: number,
+) => Array<string> = (
   entry: ServiceScopeAttributeCatalogEntry,
   activeServiceCount: number,
   lookbackHours: number,

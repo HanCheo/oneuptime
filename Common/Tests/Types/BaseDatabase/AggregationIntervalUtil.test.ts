@@ -73,10 +73,10 @@ describe("AggregationIntervalUtil", () => {
         42 * DAY,
         AggregationInterval.Day,
       ],
-      ["6 weeks + 1ms -> Week", 42 * DAY + 1, AggregationInterval.Week],
-      ["60 days -> Week", 60 * DAY, AggregationInterval.Week],
-      ["200 days -> Month", 200 * DAY, AggregationInterval.Month],
-      ["8 years -> Year", 8 * 365 * DAY, AggregationInterval.Year],
+      ["6 weeks + 1ms -> Day", 42 * DAY + 1, AggregationInterval.Day],
+      ["60 days -> Day", 60 * DAY, AggregationInterval.Day],
+      ["200 days -> Day", 200 * DAY, AggregationInterval.Day],
+      ["8 years -> Week", 8 * 365 * DAY, AggregationInterval.Week],
     ];
 
     test.each(cases)(

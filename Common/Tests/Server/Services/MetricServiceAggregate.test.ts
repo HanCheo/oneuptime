@@ -71,8 +71,11 @@ describe("MetricService aggregate statement generation", () => {
 
   describe("scalar aggregations", () => {
     it("routes plain Avg (no filters, no group-by, no distribution hint) to the minute MV", () => {
-      const query: string = getQuery(buildAggregateBy());
-      expect(query).toContain("MetricItemAggMV1m");
+      const result: { statement: Statement; columns: Array<string> } =
+        service.toAggregateStatement(buildAggregateBy());
+      expect(Object.values(result.statement.query_params)).toContain(
+        "MetricItemAggMV1m",
+      );
     });
 
     it("skips the MVs and uses count-weighted expressions when the metric is a distribution (histogram) metric", () => {
@@ -235,9 +238,13 @@ describe("MetricService aggregate statement generation", () => {
         aggregationInterval: AggregationInterval.Day,
       });
 
-      const query: string = getQuery(aggregateBy);
+      const result: { statement: Statement; columns: Array<string> } =
+        service.toAggregateStatement(aggregateBy);
+      const query: string = result.statement.query;
 
-      expect(query).toContain("MetricItemAggMV1m");
+      expect(Object.values(result.statement.query_params)).toContain(
+        "MetricItemAggMV1m",
+      );
       expect(query).toContain("date_trunc('day'");
     });
 
@@ -405,9 +412,13 @@ describe("MetricService aggregate statement generation", () => {
     };
 
     it("serves a 4h window from the minute MV at 5-minute buckets", () => {
-      const query: string = getQuery(buildWindowed(4));
+      const result: { statement: Statement; columns: Array<string> } =
+        service.toAggregateStatement(buildWindowed(4));
+      const query: string = result.statement.query;
 
-      expect(query).toContain("MetricItemAggMV1m");
+      expect(Object.values(result.statement.query_params)).toContain(
+        "MetricItemAggMV1m",
+      );
       expect(query).toContain(
         "toStartOfInterval(bucketTime, INTERVAL 5 MINUTE) as time",
       );

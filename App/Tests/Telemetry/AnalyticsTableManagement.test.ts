@@ -35,7 +35,9 @@ type ServiceOptions = {
   distributedClusterName?: string;
 };
 
-const makeService = (options: ServiceOptions = {}): MockAnalyticsService => {
+const makeService: (options?: ServiceOptions) => MockAnalyticsService = (
+  options: ServiceOptions = {},
+): MockAnalyticsService => {
   const createTableQueries: Array<string | undefined> =
     options.createTableQueries || [];
   let queryIndex: number = 0;

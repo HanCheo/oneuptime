@@ -117,23 +117,23 @@ describe("FilePicker", () => {
   // Basic rendering tests
   it("should render without crashing", () => {
     render(<FilePicker {...defaultProps} />);
-    expect(screen.getByText("Upload files")).toBeInTheDocument();
+    expect(screen.getByText("Upload files")).toBeTruthy();
   });
 
   it("should render with custom placeholder text", () => {
     defaultProps.placeholder = "Drop your files here";
     render(<FilePicker {...defaultProps} />);
-    expect(screen.getByText("Drop your files here")).toBeInTheDocument();
+    expect(screen.getByText("Drop your files here")).toBeTruthy();
   });
 
   it("should display allowed mime types", () => {
     render(<FilePicker {...defaultProps} />);
-    expect(screen.getByText(/PNG/)).toBeInTheDocument();
+    expect(screen.getByText(/PNG/)).toBeTruthy();
   });
 
   it("should display max file size message", () => {
     render(<FilePicker {...defaultProps} />);
-    expect(screen.getByText(/Max 10MB each/)).toBeInTheDocument();
+    expect(screen.getByText(/Max 10MB each/)).toBeTruthy();
   });
 
   // Initial value tests - NEW TESTS replacing skipped ones
@@ -142,8 +142,8 @@ describe("FilePicker", () => {
     defaultProps.initialValue = await mockFileModel(file);
     render(<FilePicker {...defaultProps} />);
 
-    expect(screen.getByText("test-document.png")).toBeInTheDocument();
-    expect(screen.getByText("Uploaded files")).toBeInTheDocument();
+    expect(screen.getByText("test-document.png")).toBeTruthy();
+    expect(screen.getByText("Uploaded files")).toBeTruthy();
   });
 
   it("should render with initial value and show Remove button", async () => {
@@ -151,7 +151,7 @@ describe("FilePicker", () => {
     defaultProps.initialValue = await mockFileModel(file);
     render(<FilePicker {...defaultProps} />);
 
-    expect(screen.getByText("Remove")).toBeInTheDocument();
+    expect(screen.getByText("Remove")).toBeTruthy();
   });
 
   it("should render with initial value as array and display all file names", async () => {
@@ -163,8 +163,8 @@ describe("FilePicker", () => {
     ];
     render(<FilePicker {...defaultProps} />);
 
-    expect(screen.getByText("first-file.png")).toBeInTheDocument();
-    expect(screen.getByText("second-file.png")).toBeInTheDocument();
+    expect(screen.getByText("first-file.png")).toBeTruthy();
+    expect(screen.getByText("second-file.png")).toBeTruthy();
     expect(screen.getAllByText("Remove")).toHaveLength(2);
   });
 
@@ -177,7 +177,7 @@ describe("FilePicker", () => {
     ];
     render(<FilePicker {...defaultProps} />);
 
-    expect(screen.getByText("Uploaded files")).toBeInTheDocument();
+    expect(screen.getByText("Uploaded files")).toBeTruthy();
   });
 
   // Value prop tests - NEW TESTS replacing skipped ones
@@ -186,8 +186,8 @@ describe("FilePicker", () => {
     defaultProps.value = [await mockFileModel(file)];
     render(<FilePicker {...defaultProps} />);
 
-    expect(screen.getByText("single-file.png")).toBeInTheDocument();
-    expect(screen.getByText("Uploaded files")).toBeInTheDocument();
+    expect(screen.getByText("single-file.png")).toBeTruthy();
+    expect(screen.getByText("Uploaded files")).toBeTruthy();
   });
 
   it("should render with value array containing multiple elements", async () => {
@@ -201,9 +201,9 @@ describe("FilePicker", () => {
     ];
     render(<FilePicker {...defaultProps} />);
 
-    expect(screen.getByText("file-a.png")).toBeInTheDocument();
-    expect(screen.getByText("file-b.png")).toBeInTheDocument();
-    expect(screen.getByText("file-c.png")).toBeInTheDocument();
+    expect(screen.getByText("file-a.png")).toBeTruthy();
+    expect(screen.getByText("file-b.png")).toBeTruthy();
+    expect(screen.getByText("file-c.png")).toBeTruthy();
     expect(screen.getAllByText("Remove")).toHaveLength(3);
   });
 
@@ -231,7 +231,7 @@ describe("FilePicker", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("uploaded-doc.png")).toBeInTheDocument();
+      expect(screen.getByText("uploaded-doc.png")).toBeTruthy();
     });
   });
 
@@ -312,7 +312,7 @@ describe("FilePicker", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Uploaded files")).toBeInTheDocument();
+      expect(screen.getByText("Uploaded files")).toBeTruthy();
     });
   });
 
@@ -322,14 +322,14 @@ describe("FilePicker", () => {
     defaultProps.initialValue = await mockFileModel(file);
     render(<FilePicker {...defaultProps} />);
 
-    expect(screen.getByText("removable-file.png")).toBeInTheDocument();
+    expect(screen.getByText("removable-file.png")).toBeTruthy();
 
     const removeButton: HTMLElement = screen.getByText("Remove");
     await act(async () => {
       fireEvent.click(removeButton);
     });
 
-    expect(screen.queryByText("removable-file.png")).not.toBeInTheDocument();
+    expect(screen.queryByText("removable-file.png")).toBeNull();
   });
 
   it("should call onChange with empty array when last file is removed", async () => {
@@ -376,7 +376,7 @@ describe("FilePicker", () => {
     render(<FilePicker {...defaultProps} />);
 
     // Component should still render in read-only mode
-    expect(screen.getByText("Upload files")).toBeInTheDocument();
+    expect(screen.getByText("Upload files")).toBeTruthy();
   });
 
   // Error handling tests
@@ -384,14 +384,14 @@ describe("FilePicker", () => {
     defaultProps.error = "Something went wrong";
     render(<FilePicker {...defaultProps} />);
 
-    expect(screen.getByTestId("error-message")).toBeInTheDocument();
-    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+    expect(screen.getByTestId("error-message")).toBeTruthy();
+    expect(screen.getByText("Something went wrong")).toBeTruthy();
   });
 
   it("should not display error message when error prop is not provided", () => {
     render(<FilePicker {...defaultProps} />);
 
-    expect(screen.queryByTestId("error-message")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("error-message")).toBeNull();
   });
 
   // Callback tests
@@ -424,7 +424,7 @@ describe("FilePicker", () => {
     defaultProps.dataTestId = "custom-file-picker";
     render(<FilePicker {...defaultProps} />);
 
-    expect(screen.getByTestId("custom-file-picker")).toBeInTheDocument();
+    expect(screen.getByTestId("custom-file-picker")).toBeTruthy();
   });
 
   // Multi-file picker tests
@@ -434,7 +434,7 @@ describe("FilePicker", () => {
     defaultProps.initialValue = await mockFileModel(file);
     render(<FilePicker {...defaultProps} />);
 
-    expect(screen.getByText("Add more files")).toBeInTheDocument();
+    expect(screen.getByText("Add more files")).toBeTruthy();
   });
 
   // File without file attribute test
@@ -445,7 +445,7 @@ describe("FilePicker", () => {
     render(<FilePicker {...defaultProps} />);
 
     // File name should still be shown but file size won't be available
-    expect(screen.getByText("no-buffer.png")).toBeInTheDocument();
+    expect(screen.getByText("no-buffer.png")).toBeTruthy();
   });
 
   // Error on arrayBuffer test
@@ -467,7 +467,7 @@ describe("FilePicker", () => {
     fireEvent.drop(dropzone, data);
 
     await waitFor(() => {
-      expect(screen.queryByText("error-file.png")).not.toBeInTheDocument();
+      expect(screen.queryByText("error-file.png")).toBeNull();
     });
   });
 });

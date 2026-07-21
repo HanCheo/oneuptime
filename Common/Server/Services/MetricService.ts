@@ -1078,12 +1078,14 @@ export class MetricService extends AnalyticsDatabaseService<Metric> {
       return attributeRollupStatement;
     }
 
-    const attributeGroupStatement: {
-      statement: Statement;
-      columns: Array<string>;
-    } | null = this.tryBuildSelectedAttributeAggregateStatement(aggregateBy);
-    if (attributeGroupStatement) {
-      return attributeGroupStatement;
+    if (aggregateBy.aggregationType === AggregationType.Increase) {
+      const attributeGroupStatement: {
+        statement: Statement;
+        columns: Array<string>;
+      } | null = this.tryBuildSelectedAttributeAggregateStatement(aggregateBy);
+      if (attributeGroupStatement) {
+        return attributeGroupStatement;
+      }
     }
 
     if (!isPercentileAggregation(aggregateBy.aggregationType)) {

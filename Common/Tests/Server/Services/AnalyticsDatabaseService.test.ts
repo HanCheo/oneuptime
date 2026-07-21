@@ -733,11 +733,11 @@ describe("AnalyticsDatabaseService", () => {
         new AnalyticsDatabaseService({
           modelType: DistributedTestModel,
         });
-      const executeSpy: jest.SpiedFunction<
-        AnalyticsDatabaseService<DistributedTestModel>["execute"]
-      > = jest
+      const executeSpy: ReturnType<typeof jest.fn> = jest
         .spyOn(distributedService, "execute")
-        .mockResolvedValue(undefined as never);
+        .mockResolvedValue(undefined as never) as unknown as ReturnType<
+        typeof jest.fn
+      >;
 
       await distributedService.addColumnInDatabase(
         new DistributedTestModel().tableColumns[2]!,

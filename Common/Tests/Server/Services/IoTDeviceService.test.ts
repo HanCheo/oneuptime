@@ -3,6 +3,7 @@ import IoTDeviceService, {
   ParsedIoTDevice,
 } from "../../../Server/Services/IoTDeviceService";
 import { IOT_MAX_FUTURE_CLOCK_SKEW_MINUTES } from "../../../Server/Utils/Telemetry/IoTSnapshotScan";
+import IoTDeviceState from "../../../Types/IoT/IoTDeviceState";
 import ObjectID from "../../../Types/ObjectID";
 
 /*
@@ -285,56 +286,48 @@ describe("IoTDeviceService.bulkUpdateLatestMetrics — sanitation matches the up
   });
 });
 
-describe("IoTDeviceService.deleteStaleForFleet — registered devices survive", () => {
-  const CUTOFF: Date = new Date("2026-06-13T00:00:00.000Z");
+describe("IoTDeviceService.markStaleForFleet — lifecycle transition", () => {
+  const ANCHOR: Date = new Date("2026-06-13T00:00:00.000Z");
 
-  test("marks registered devices offline and deletes only unregistered ones", async () => {
+  test("marks silent online/offline devices stale instead of deleting inventory", async () => {
     const query: jest.Mock = mockQueryRunner();
-    query
-      .mockResolvedValueOnce([[], 2]) // UPDATE (registered -> isUp=false)
-      .mockResolvedValueOnce([[], 5]); // DELETE (unregistered)
+    query.mockResolvedValueOnce([[], 2]);
 
-    const result: { deleted: number; markedOffline: number } =
-      await IoTDeviceService.deleteStaleForFleet({
-        iotFleetId: FLEET_ID,
-        olderThan: CUTOFF,
-      });
+    const markedStale: number = await IoTDeviceService.markStaleForFleet({
+      iotFleetId: FLEET_ID,
+      anchor: ANCHOR,
+      fleetDefaultCheckinIntervalSeconds: 300,
+    });
 
-    expect(query).toHaveBeenCalledTimes(2);
+    expect(query).toHaveBeenCalledTimes(1);
 
-    const [updateSql, updateParams] = query.mock.calls[0] as QueryCall;
-    expect(updateSql).toContain('UPDATE "IoTDevice" SET "isUp" = false');
-    // Registered = credential on the same project + fleet + externalId.
-    expect(updateSql).toContain('EXISTS (SELECT 1 FROM "IoTDeviceCredential"');
-    expect(updateSql).toContain('c."externalId" = "IoTDevice"."externalId"');
-    expect(updateSql).toContain('c."projectId" = "IoTDevice"."projectId"');
-    // The credential correlation itself is kind-agnostic.
-    expect(updateSql).not.toContain('c."kind"');
-    // Reconnect recovery depends on lastSeenAt staying untouched.
-    expect(updateSql).not.toContain('"lastSeenAt" =');
-    // Idempotent across cron ticks: already-down rows are not rewritten.
-    expect(updateSql).toContain('"isUp" IS DISTINCT FROM false');
-    // Stale duplicate-kind rows self-heal instead of being pinned offline.
-    expect(updateSql).toContain("NOT EXISTS");
-    expect(updateParams).toEqual([FLEET_ID.toString(), CUTOFF]);
+    const [sql, params] = query.mock.calls[0] as QueryCall;
+    expect(sql).toContain('UPDATE "IoTDevice"');
+    expect(sql).toContain('SET "state" = $3');
+    expect(sql).toContain('"lastSeenAt" < ($2::timestamptz - make_interval');
+    expect(sql).toContain('"state" IN ($4, $5)');
+    expect(sql).not.toContain('DELETE FROM "IoTDevice"');
+    expect(params).toEqual([
+      FLEET_ID.toString(),
+      ANCHOR,
+      IoTDeviceState.Stale,
+      IoTDeviceState.Online,
+      IoTDeviceState.Offline,
+      300,
+    ]);
 
-    const [deleteSql, deleteParams] = query.mock.calls[1] as QueryCall;
-    expect(deleteSql).toContain('DELETE FROM "IoTDevice"');
-    expect(deleteSql).toContain("NOT EXISTS");
-    expect(deleteParams).toEqual([FLEET_ID.toString(), CUTOFF]);
-
-    expect(result).toEqual({ deleted: 5, markedOffline: 2 });
+    expect(markedStale).toBe(2);
   });
 
   test("normalizes a driver result without an affected count to zero", async () => {
     mockQueryRunner([]);
 
-    const result: { deleted: number; markedOffline: number } =
-      await IoTDeviceService.deleteStaleForFleet({
-        iotFleetId: FLEET_ID,
-        olderThan: CUTOFF,
-      });
+    const markedStale: number = await IoTDeviceService.markStaleForFleet({
+      iotFleetId: FLEET_ID,
+      anchor: ANCHOR,
+      fleetDefaultCheckinIntervalSeconds: null,
+    });
 
-    expect(result).toEqual({ deleted: 0, markedOffline: 0 });
+    expect(markedStale).toBe(0);
   });
 });

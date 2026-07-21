@@ -67,7 +67,8 @@ describe("FacetFilterUtils", () => {
     );
 
     expect(result.body).toBe("ingester");
-    expect(result.severityText).toBe("Debug");
+    expect(result.severityText).toBeInstanceOf(Includes);
+    expect((result.severityText as Includes).values).toEqual(["Debug"]);
     expect(result.primaryEntityId).toBeInstanceOf(Includes);
     expect((result.primaryEntityId as Includes).values).toEqual([
       "host-1",

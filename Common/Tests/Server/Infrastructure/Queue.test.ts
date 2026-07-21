@@ -89,8 +89,12 @@ jest.mock("../../../Server/Utils/Logger", () => {
   return {
     __esModule: true,
     default: {
-      debug: mockLoggerDebug,
-      error: mockLoggerError,
+      debug: (...args: Array<unknown>) => {
+        return mockLoggerDebug(...args);
+      },
+      error: (...args: Array<unknown>) => {
+        return mockLoggerError(...args);
+      },
     },
   };
 });
@@ -136,18 +140,23 @@ const repeatable: (name: string, key: string) => RepeatableJob = (
     pattern: "*/15 * * * *",
   };
 };
-
 describe("Queue.removeRepeatableByName", () => {
   let queue: MockBullQueue;
 
   beforeAll(() => {
-    Queue.getQueue(QueueName.Worker);
     queue = mockQueueInstance;
   });
 
   beforeEach(() => {
+    jest
+      .spyOn(Queue, "getQueue")
+      .mockReturnValue(mockQueueInstance as unknown as BullMQQueue);
     queue.getRepeatableJobs.mockReset().mockResolvedValue([]);
     queue.removeRepeatableByKey.mockReset().mockResolvedValue(true);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it("removes a repeatable whose name matches, using its key", async () => {
@@ -249,13 +258,19 @@ describe("Queue.removeJob", () => {
   let queue: MockBullQueue;
 
   beforeAll(() => {
-    Queue.getQueue(QueueName.Worker);
     queue = mockQueueInstance;
   });
 
   beforeEach(() => {
+    jest
+      .spyOn(Queue, "getQueue")
+      .mockReturnValue(mockQueueInstance as unknown as BullMQQueue);
     queue.getJob.mockReset().mockResolvedValue(undefined);
     queue.removeRepeatableByKey.mockReset().mockResolvedValue(true);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it("passes the repeat key through unsanitized", async () => {

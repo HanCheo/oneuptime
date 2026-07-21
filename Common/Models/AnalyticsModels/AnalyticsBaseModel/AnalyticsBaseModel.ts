@@ -200,6 +200,7 @@ export default class AnalyticsBaseModel extends CommonModel {
     this.ttlExpression = data.ttlExpression || "";
     this.projections = data.projections || [];
     this.materializedViews = data.materializedViews || [];
+    this.distributedTableName = data.distributedTableName;
     if (data.distributedClusterName) {
       this.distributedClusterName = data.distributedClusterName;
     } else if (this.distributedTableName) {

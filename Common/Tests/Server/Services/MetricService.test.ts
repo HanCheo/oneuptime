@@ -107,7 +107,7 @@ describe("MetricService selected attribute group-by", () => {
     const { statement } = service.toAggregateStatement(aggregateBy);
 
     expect(statement.query).toContain("FROM oneuptime.MetricItemV3");
-    expect(statement.query).toContain("GROUP BY time, __attr_0");
+    expect(statement.query).toContain("GROUP BY time, __attr_grp_0");
     expect(statement.query).not.toContain("MetricItemAttributeAggMV1m");
   });
 

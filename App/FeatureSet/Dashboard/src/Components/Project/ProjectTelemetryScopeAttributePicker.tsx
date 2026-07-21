@@ -28,6 +28,7 @@ import {
   getRecommendedAttributeDefinition,
   getSelectorFitLabel,
   RECOMMENDED_SERVICE_SCOPE_ATTRIBUTE_DEFINITIONS,
+  RecommendedServiceScopeAttributeDefinition,
   selectedAttributeKeysFromFormValue,
   ServiceScopeAttributeCatalogEntry,
   ServiceScopeAttributeCatalogResponse,
@@ -52,7 +53,9 @@ const ProjectTelemetryScopeAttributePicker: FunctionComponent<
   useEffect(() => {
     let cancelled: boolean = false;
 
-    const buildFallbackCatalog = (
+    const buildFallbackCatalog: (
+      attributeKeys: Array<string>,
+    ) => ServiceScopeAttributeCatalogResponse = (
       attributeKeys: Array<string>,
     ): ServiceScopeAttributeCatalogResponse => {
       return {
@@ -73,7 +76,7 @@ const ProjectTelemetryScopeAttributePicker: FunctionComponent<
       };
     };
 
-    const loadCatalog = async (): Promise<void> => {
+    const loadCatalog: () => Promise<void> = async (): Promise<void> => {
       setIsLoading(true);
       setError("");
       setIsFallbackCatalog(false);
@@ -248,7 +251,9 @@ const ProjectTelemetryScopeAttributePicker: FunctionComponent<
 
     const recommendedOptions: Array<DropdownOption> =
       RECOMMENDED_SERVICE_SCOPE_ATTRIBUTE_DEFINITIONS.map(
-        (definition): DropdownOption => {
+        (
+          definition: RecommendedServiceScopeAttributeDefinition,
+        ): DropdownOption => {
           const entry: ServiceScopeAttributeCatalogEntry | undefined =
             observedAttributeMap.get(definition.attributeKey);
           const description: string = entry
@@ -268,9 +273,11 @@ const ProjectTelemetryScopeAttributePicker: FunctionComponent<
       );
 
     const recommendedSet: Set<string> = new Set(
-      RECOMMENDED_SERVICE_SCOPE_ATTRIBUTE_DEFINITIONS.map((definition) => {
-        return definition.attributeKey;
-      }),
+      RECOMMENDED_SERVICE_SCOPE_ATTRIBUTE_DEFINITIONS.map(
+        (definition: RecommendedServiceScopeAttributeDefinition) => {
+          return definition.attributeKey;
+        },
+      ),
     );
     const observedOptions: Array<DropdownOption> = observedEntries
       .filter((entry: ServiceScopeAttributeCatalogEntry): boolean => {
@@ -479,8 +486,9 @@ const ProjectTelemetryScopeAttributePicker: FunctionComponent<
           <div className="mt-4 flex flex-col gap-3">
             {effectiveAttributeKeys.map(
               (attributeKey: string): ReactElement => {
-                const definition =
-                  getRecommendedAttributeDefinition(attributeKey);
+                const definition:
+                  | RecommendedServiceScopeAttributeDefinition
+                  | undefined = getRecommendedAttributeDefinition(attributeKey);
                 const entry: ServiceScopeAttributeCatalogEntry | undefined =
                   observedAttributeMap.get(attributeKey);
                 const reasons: Array<string> = [
@@ -632,96 +640,104 @@ const ProjectTelemetryScopeAttributePicker: FunctionComponent<
 
           <div className="mt-4 flex flex-col gap-3">
             {RECOMMENDED_SERVICE_SCOPE_ATTRIBUTE_DEFINITIONS.filter(
-              (definition) => {
+              (
+                definition: RecommendedServiceScopeAttributeDefinition,
+              ): boolean => {
                 return !effectiveAttributeKeys.includes(
                   definition.attributeKey,
                 );
               },
-            ).map((definition): ReactElement => {
-              const entry: ServiceScopeAttributeCatalogEntry | undefined =
-                observedAttributeMap.get(definition.attributeKey);
-              const reasons: Array<string> = [
-                ...definition.recommendedReasons,
-                ...getAttributeDynamicReasons(
-                  entry || {
-                    attributeKey: definition.attributeKey,
-                    activeServiceCount: null,
-                    distinctValueCount: null,
-                    sampleCount: null,
-                    lastSeenBucket: null,
-                  },
-                  activeServiceCount,
-                  lookbackHours,
-                ),
-              ];
+            ).map(
+              (
+                definition: RecommendedServiceScopeAttributeDefinition,
+              ): ReactElement => {
+                const entry: ServiceScopeAttributeCatalogEntry | undefined =
+                  observedAttributeMap.get(definition.attributeKey);
+                const reasons: Array<string> = [
+                  ...definition.recommendedReasons,
+                  ...getAttributeDynamicReasons(
+                    entry || {
+                      attributeKey: definition.attributeKey,
+                      activeServiceCount: null,
+                      distinctValueCount: null,
+                      sampleCount: null,
+                      lastSeenBucket: null,
+                    },
+                    activeServiceCount,
+                    lookbackHours,
+                  ),
+                ];
 
-              if (definition.queryAliases?.length) {
-                reasons.splice(
-                  1,
-                  0,
-                  `Canonicalizes ${definition.queryAliases.length} different trace keys into the same selector.`,
-                );
-              }
+                if (definition.queryAliases?.length) {
+                  reasons.splice(
+                    1,
+                    0,
+                    `Canonicalizes ${definition.queryAliases.length} different trace keys into the same selector.`,
+                  );
+                }
 
-              return (
-                <div
-                  key={definition.attributeKey}
-                  className="rounded-xl border border-gray-200 bg-white px-4 py-4"
-                >
-                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h4 className="text-sm font-semibold text-gray-900">
-                          {definition.label}
-                        </h4>
-                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-                          Recommended
-                        </span>
-                        {definition.isDefault && (
-                          <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700">
-                            Default when empty
+                return (
+                  <div
+                    key={definition.attributeKey}
+                    className="rounded-xl border border-gray-200 bg-white px-4 py-4"
+                  >
+                    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className="text-sm font-semibold text-gray-900">
+                            {definition.label}
+                          </h4>
+                          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                            Recommended
                           </span>
-                        )}
+                          {definition.isDefault && (
+                            <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700">
+                              Default when empty
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 text-sm text-gray-600">
+                          {definition.shortDescription}
+                        </p>
+                        <p className="mt-1 font-mono text-xs text-gray-500">
+                          {definition.attributeKey}
+                        </p>
                       </div>
-                      <p className="mt-1 text-sm text-gray-600">
-                        {definition.shortDescription}
-                      </p>
-                      <p className="mt-1 font-mono text-xs text-gray-500">
-                        {definition.attributeKey}
-                      </p>
+                      <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 md:max-w-xs">
+                        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                          If you add this key
+                        </p>
+                        <p className="mt-1 font-medium text-gray-900">
+                          {getAttributeImpactSummary(
+                            entry || {
+                              attributeKey: definition.attributeKey,
+                              activeServiceCount: null,
+                              distinctValueCount: null,
+                              sampleCount: null,
+                              lastSeenBucket: null,
+                            },
+                            activeServiceCount,
+                          )}
+                        </p>
+                      </div>
                     </div>
-                    <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 md:max-w-xs">
-                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                        If you add this key
-                      </p>
-                      <p className="mt-1 font-medium text-gray-900">
-                        {getAttributeImpactSummary(
-                          entry || {
-                            attributeKey: definition.attributeKey,
-                            activeServiceCount: null,
-                            distinctValueCount: null,
-                            sampleCount: null,
-                            lastSeenBucket: null,
-                          },
-                          activeServiceCount,
-                        )}
-                      </p>
-                    </div>
-                  </div>
 
-                  <ul className="mt-4 space-y-2 text-sm text-gray-700">
-                    {reasons.slice(0, 5).map((reason: string): ReactElement => {
-                      return (
-                        <li key={reason} className="flex gap-2">
-                          <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
-                          <span>{reason}</span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              );
-            })}
+                    <ul className="mt-4 space-y-2 text-sm text-gray-700">
+                      {reasons
+                        .slice(0, 5)
+                        .map((reason: string): ReactElement => {
+                          return (
+                            <li key={reason} className="flex gap-2">
+                              <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                              <span>{reason}</span>
+                            </li>
+                          );
+                        })}
+                    </ul>
+                  </div>
+                );
+              },
+            )}
           </div>
         </section>
       </div>

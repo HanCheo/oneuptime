@@ -149,6 +149,11 @@ export default class MetricFormulaEvaluator {
       },
     );
 
+    const hasConfigGroupedVariable: boolean = referencedVariables.some(
+      (variableName: string) => {
+        return variableData[variableName]!.groupByAttributeKeys.length > 0;
+      },
+    );
     if (!hasMultiSeriesVariable) {
       // Single-series inputs: exact passthrough of the original behavior.
       const seriesByVariable: Record<string, Array<AggregatedModel>> = {};
@@ -162,6 +167,7 @@ export default class MetricFormulaEvaluator {
           rpn,
           referencedVariables,
           seriesByVariable,
+          ignorePointDimensions: hasConfigGroupedVariable,
         }),
       };
     }
@@ -241,6 +247,7 @@ export default class MetricFormulaEvaluator {
           referencedVariables,
           seriesByVariable,
           groupAttributes: groupLabels,
+          ignorePointDimensions: true,
         }),
       );
     }
@@ -498,11 +505,13 @@ export default class MetricFormulaEvaluator {
     referencedVariables: Array<string>;
     seriesByVariable: Record<string, Array<AggregatedModel>>;
     groupAttributes?: JSONObject | undefined;
+    ignorePointDimensions?: boolean | undefined;
   }): Array<AggregatedModel> {
     const timestampIndex: Map<string, FormulaEvaluationBucket> =
       MetricFormulaEvaluator.buildTimestampIndex(
         input.referencedVariables,
         input.seriesByVariable,
+        Boolean(input.ignorePointDimensions),
       );
 
     const sortedTimestamps: Array<string> = Array.from(
@@ -556,6 +565,7 @@ export default class MetricFormulaEvaluator {
   private static buildTimestampIndex(
     variables: Array<string>,
     seriesByVariable: Record<string, Array<AggregatedModel>>,
+    ignorePointDimensions: boolean,
   ): Map<string, FormulaEvaluationBucket> {
     const index: Map<string, FormulaEvaluationBucket> = new Map();
 
@@ -571,7 +581,9 @@ export default class MetricFormulaEvaluator {
           sample.timestamp,
         );
         const dimensions: Record<string, AggregatedModel[string]> =
-          MetricFormulaEvaluator.extractPointDimensions(sample);
+          ignorePointDimensions
+            ? {}
+            : MetricFormulaEvaluator.extractPointDimensions(sample);
         const dimensionKey: string =
           MetricFormulaEvaluator.stableStringify(dimensions);
         const bucketKey: string = `${timestampKey}\u0000${dimensionKey}`;

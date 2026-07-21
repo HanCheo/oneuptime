@@ -9,7 +9,10 @@ import { getIoTMetricByMetricName } from "../../../Types/Monitor/IotMetricCatalo
 import MonitorStep from "../../../Types/Monitor/MonitorStep";
 import MonitorStepIoTMonitor from "../../../Types/Monitor/MonitorStepIoTMonitor";
 import MonitorCriteriaInstance from "../../../Types/Monitor/MonitorCriteriaInstance";
-import { FilterType } from "../../../Types/Monitor/CriteriaFilter";
+import {
+  FilterType,
+  NoDataPolicy,
+} from "../../../Types/Monitor/CriteriaFilter";
 import MetricsAggregationType from "../../../Types/Metrics/MetricsAggregationType";
 import RollingTime from "../../../Types/RollingTime/RollingTime";
 import ObjectID from "../../../Types/ObjectID";
@@ -34,9 +37,9 @@ import AggregatedResult from "../../../Types/BaseDatabase/AggregatedResult";
  *      (device identity lives in datapoint labels — NEVER `resource.`
  *      -prefixed, per the filter contract in IotAlertTemplates.ts) so
  *      one incident fires per device, use disjoint fire/recover
- *      thresholds on the same alias, and keep the default Ignore
- *      no-data policy on every filter (no TreatAsZero — see layer 3).
- *
+ *      thresholds on the same alias, and use the expected no-data policy:
+ *      Device Offline treats silence as zero; every other template keeps
+ *      the default Ignore behavior.
  *   2. A per-template expectation table pins the spec'd metric /
  *      aggregation / threshold / rolling-time decisions (Min for
  *      device_up so one down push trips it; Avg for the level readings
@@ -45,17 +48,10 @@ import AggregatedResult from "../../../Types/BaseDatabase/AggregatedResult";
  *
  *   3. Blackout contract: the worker's monitorIoT fetcher stamps
  *      MetricMonitorResponse.isTelemetrySourceReporting via the shared
- *      checkTelemetrySourceReporting liveness probe. IoT templates
- *      never TreatAsZero, so absent data must match NO criteria under
- *      ANY liveness flag — recovery is strictly value-driven. This
- *      matters doubly for IoT: a fleet that stops pushing entirely
- *      (dead gateway) must hold open incidents rather than auto-resolve
- *      them. The blackout tests drive the REAL evaluator
- *      (processMonitorStep) with each template's actual MonitorStep:
- *      false → no criteria met (no recover, no status flip, no
- *      auto-resolve), true → normal value-driven evaluation, undefined
- *      → legacy behavior (identical on absent data, since Ignore
- *      already refuses to read absence).
+ *      checkTelemetrySourceReporting liveness probe. A total source
+ *      blackout must match NO criteria. When the source is reporting,
+ *      Device Offline treats missing device series as 0 so registered
+ *      silent devices fire; every other template remains value-driven.
  */
 
 interface QueryExpectation {
@@ -572,22 +568,25 @@ describe("IotAlertTemplates - enumerated invariants (every template)", () => {
       return [t.id, t];
     }),
   )(
-    "%s keeps the default Ignore no-data policy on every filter",
+    "%s uses the expected no-data policy on every filter",
     (_id: unknown, template: unknown) => {
-      /*
-       * Structural half of the blackout contract: IoT series exist only
-       * while devices push, and battery-powered devices routinely go
-       * quiet — so no filter may opt into TreatAsZero (or Trigger).
-       * Absence must carry no signal in either direction; in particular
-       * a silent fleet must never read `device_up >= 1` as recovered.
-       */
       const step: MonitorStep = (template as IoTAlertTemplate).getMonitorStep(
         buildArgs(),
       );
+      const instances: Array<MonitorCriteriaInstance> =
+        getCriteriaInstances(step);
 
-      for (const instance of getCriteriaInstances(step)) {
+      for (const [instanceIndex, instance] of instances.entries()) {
+        const expectedPolicy: NoDataPolicy | undefined =
+          (template as IoTAlertTemplate).id === "iot-device-offline" &&
+          instanceIndex === 0
+            ? NoDataPolicy.TreatAsZero
+            : undefined;
+
         for (const filter of (instance.data?.filters || []) as Array<any>) {
-          expect(filter.metricMonitorOptions.onNoDataPolicy).toBeUndefined();
+          expect(filter.metricMonitorOptions.onNoDataPolicy).toBe(
+            expectedPolicy,
+          );
         }
       }
     },
@@ -653,10 +652,8 @@ describe("IotAlertTemplates - spec table expectations", () => {
  * died, so NO device is pushing — must never read as recovery. The
  * worker's monitorIoT fetcher stamps isTelemetrySourceReporting=false
  * on the response in that case (via checkTelemetrySourceReporting).
- * IoT templates keep the default Ignore no-data policy on every
- * filter, so absent data matches NO criteria under ANY flag value —
- * recovery is strictly value-driven: only a device actually pushing
- * `iot_device_up = 1` can flip a Device Offline incident to resolved.
+ * When the source is reporting, Device Offline treats absence as 0 so
+ * registered silent devices fire; every other template ignores absence.
  * These tests drive the REAL evaluator (processMonitorStep) with each
  * template's actual MonitorStep, so the contract covers the template →
  * evaluator hand-off rather than re-implementing filter semantics.
@@ -807,7 +804,7 @@ describe("IotAlertTemplates - blackout contract (no auto-resolve on absent data)
       return [t.id, t];
     }),
   )(
-    "%s: absent data never reads as recovery even while the source reports (value-driven recovery only)",
+    "%s: absent data while the source reports follows the template no-data policy",
     async (_id: unknown, template: unknown) => {
       const step: MonitorStep = (template as IoTAlertTemplate).getMonitorStep(
         buildArgs(),
@@ -822,7 +819,11 @@ describe("IotAlertTemplates - blackout contract (no auto-resolve on absent data)
         isTelemetrySourceReporting: true,
       });
 
-      expect(outcome.criteriaMetId).toBeUndefined();
+      expect(outcome.criteriaMetId).toBe(
+        (template as IoTAlertTemplate).id === "iot-device-offline"
+          ? offlineInstanceOf(step).data?.id
+          : undefined,
+      );
     },
   );
 
@@ -831,7 +832,7 @@ describe("IotAlertTemplates - blackout contract (no auto-resolve on absent data)
       return [t.id, t];
     }),
   )(
-    "%s: unknown liveness (legacy fetcher, flag unset) keeps the same no-data behavior",
+    "%s: unknown liveness follows the same no-data behavior as a reporting source",
     async (_id: unknown, template: unknown) => {
       const step: MonitorStep = (template as IoTAlertTemplate).getMonitorStep(
         buildArgs(),
@@ -846,7 +847,11 @@ describe("IotAlertTemplates - blackout contract (no auto-resolve on absent data)
         isTelemetrySourceReporting: undefined,
       });
 
-      expect(outcome.criteriaMetId).toBeUndefined();
+      expect(outcome.criteriaMetId).toBe(
+        (template as IoTAlertTemplate).id === "iot-device-offline"
+          ? offlineInstanceOf(step).data?.id
+          : undefined,
+      );
     },
   );
 
