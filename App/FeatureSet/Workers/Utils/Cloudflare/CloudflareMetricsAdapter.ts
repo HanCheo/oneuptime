@@ -144,7 +144,7 @@ export default class CloudflareMetricsAdapter {
       );
       const attributes: JSONArray = [
         this.stringAttribute("cloudflare.metric_source", "web"),
-        this.stringAttribute("cloudflare.request_source", "eyeball"),
+        this.stringAttribute("cloudflare.request_source", "all"),
       ];
 
       this.pushSum(metrics, {

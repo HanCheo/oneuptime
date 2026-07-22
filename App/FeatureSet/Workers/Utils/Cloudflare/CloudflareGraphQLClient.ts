@@ -292,7 +292,7 @@ export default class CloudflareGraphQLClient {
       }`);
       queryParts.push(`dashboardBandwidthGroups: httpRequestsAdaptiveGroups(
         limit: 10000
-        filter: { datetime_geq: $start, datetime_lt: $end, requestSource: "eyeball" }
+        filter: { datetime_geq: $start, datetime_lt: $end }
         orderBy: [datetimeMinute_ASC]
       ) {
         dimensions { datetimeMinute }

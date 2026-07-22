@@ -94,7 +94,7 @@ describe("CloudflareGraphQLClient.getMetrics", () => {
     jest.clearAllMocks();
   });
 
-  test("queries dashboard bandwidth from eyeball adaptive traffic", async () => {
+  test("queries dashboard bandwidth from all adaptive traffic", async () => {
     axiosPostMock.mockResolvedValueOnce(
       axiosResponse({
         data: {
@@ -133,8 +133,9 @@ describe("CloudflareGraphQLClient.getMetrics", () => {
     expect(axiosPostMock.mock.calls[0]?.[2]).toMatchObject({
       headers: { Authorization: "Bearer token-1" },
     });
-    expect(axiosPostMock.mock.calls[0]?.[1]).toMatchObject({
-      query: expect.stringContaining('requestSource: "eyeball"'),
-    });
+    const requestBody: unknown = axiosPostMock.mock.calls[0]?.[1];
+    expect((requestBody as { query?: string }).query).not.toContain(
+      "requestSource",
+    );
   });
 });

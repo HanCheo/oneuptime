@@ -28,7 +28,7 @@ type AdapterMetric =
   AdapterPayload["resourceMetrics"][number]["scopeMetrics"][number]["metrics"][number];
 
 describe("CloudflareMetricsAdapter", () => {
-  test("uses eyeball adaptive bytes for dashboard bandwidth", () => {
+  test("uses all adaptive bytes for dashboard bandwidth", () => {
     const integration: CloudflareIntegration = {
       cloudflareZoneId: "zone-a",
       cloudflareZoneName: "example.com",
@@ -79,7 +79,7 @@ describe("CloudflareMetricsAdapter", () => {
     expect(bandwidthMetrics[0]?.sum.dataPoints[0]?.asDouble).toBe(123);
     expect(bandwidthMetrics[0]?.sum.dataPoints[0]?.attributes).toContainEqual({
       key: "cloudflare.request_source",
-      value: { stringValue: "eyeball" },
+      value: { stringValue: "all" },
     });
   });
 });
