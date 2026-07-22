@@ -230,6 +230,12 @@ const formFields: Array<Field<CloudflareIntegration>> = [
       );
 
       if (!zone) {
+        setNewFormValues({
+          ...currentFormValues,
+          cloudflareAccountId: undefined,
+          cloudflareZoneId: undefined,
+          cloudflareZoneName: undefined,
+        });
         return;
       }
 

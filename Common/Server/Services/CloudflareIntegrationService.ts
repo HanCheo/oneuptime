@@ -53,15 +53,22 @@ export class Service extends DatabaseService<Model> {
   }
 
   private normalizePollInterval(
-    value: number | (() => string) | null | undefined,
+    value: number | string | (() => string) | null | undefined,
   ): number {
-    if (typeof value !== "number" || !Number.isFinite(value)) {
+    const parsedValue: number | (() => string) | null | undefined =
+      typeof value === "string"
+        ? value.trim()
+          ? Number(value)
+          : undefined
+        : value;
+
+    if (typeof parsedValue !== "number" || !Number.isFinite(parsedValue)) {
       return DEFAULT_POLL_INTERVAL_MINUTES;
     }
 
     return Math.min(
       MAX_POLL_INTERVAL_MINUTES,
-      Math.max(MIN_POLL_INTERVAL_MINUTES, Math.floor(value)),
+      Math.max(MIN_POLL_INTERVAL_MINUTES, Math.floor(parsedValue)),
     );
   }
 }

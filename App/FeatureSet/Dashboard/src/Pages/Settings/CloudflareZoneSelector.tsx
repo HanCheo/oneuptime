@@ -23,11 +23,6 @@ export interface CloudflareZoneOption {
 }
 
 const zonesById: Map<string, CloudflareZoneOption> = new Map();
-let selectedCloudflareZones: Array<CloudflareZoneOption> = [];
-
-export function getSelectedCloudflareZones(): Array<CloudflareZoneOption> {
-  return selectedCloudflareZones;
-}
 
 export function getCloudflareZoneOption(
   zoneId: string,
@@ -37,7 +32,7 @@ export function getCloudflareZoneOption(
 
 export interface ComponentProps extends CustomElementProps {
   values: FormValues<CloudflareIntegration>;
-  isMultiSelect?: boolean | undefined;
+  useCheckboxList?: boolean | undefined;
 }
 
 const CloudflareZoneSelector: FunctionComponent<ComponentProps> = (
@@ -69,8 +64,8 @@ const CloudflareZoneSelector: FunctionComponent<ComponentProps> = (
 
   const fetchZones: () => Promise<void> = async (): Promise<void> => {
     if (!apiToken) {
-      selectedCloudflareZones = [];
       setSelectedZoneIds([]);
+      props.onChange?.("");
       setZones([]);
       setError(null);
       return;
@@ -122,22 +117,21 @@ const CloudflareZoneSelector: FunctionComponent<ComponentProps> = (
     }
   };
 
-  const updateSelectedZones: (zoneIds: Array<string>) => void = (
-    zoneIds: Array<string>,
+  const updateSelectedZone: (zoneId: string) => void = (
+    zoneId: string,
   ): void => {
-    const selectedZones: Array<CloudflareZoneOption> = zones.filter(
-      (zone: CloudflareZoneOption) => {
-        return zoneIds.includes(zone.id);
+    const zone: CloudflareZoneOption | undefined = zones.find(
+      (item: CloudflareZoneOption) => {
+        return item.id === zoneId;
       },
     );
 
-    for (const zone of selectedZones) {
+    if (zone) {
       zonesById.set(zone.id, zone);
     }
 
-    selectedCloudflareZones = selectedZones;
-    setSelectedZoneIds(zoneIds);
-    props.onChange?.(zoneIds[0] || "");
+    setSelectedZoneIds(zoneId ? [zoneId] : []);
+    props.onChange?.(zoneId);
   };
 
   useEffect(() => {
@@ -147,7 +141,7 @@ const CloudflareZoneSelector: FunctionComponent<ComponentProps> = (
   return (
     <div className="space-y-2">
       <div className="flex gap-2">
-        {props.isMultiSelect ? (
+        {props.useCheckboxList ? (
           <div className="max-h-48 w-full overflow-y-auto rounded-md border border-gray-300 bg-white p-3 shadow-sm disabled:bg-gray-100">
             {!apiToken && (
               <p className="text-sm text-gray-500">Enter API token first</p>
@@ -175,13 +169,7 @@ const CloudflareZoneSelector: FunctionComponent<ComponentProps> = (
                     className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                     onBlur={props.onBlur}
                     onChange={() => {
-                      updateSelectedZones(
-                        isChecked
-                          ? selectedZoneIds.filter((zoneId: string) => {
-                              return zoneId !== zone.id;
-                            })
-                          : [...selectedZoneIds, zone.id],
-                      );
+                      updateSelectedZone(zone.id);
                     }}
                     type="checkbox"
                   />
