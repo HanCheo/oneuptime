@@ -23,6 +23,11 @@ export interface CloudflareZoneOption {
 }
 
 const zonesById: Map<string, CloudflareZoneOption> = new Map();
+let selectedCloudflareZones: Array<CloudflareZoneOption> = [];
+
+export function getSelectedCloudflareZones(): Array<CloudflareZoneOption> {
+  return selectedCloudflareZones;
+}
 
 export function getCloudflareZoneOption(
   zoneId: string,
@@ -32,6 +37,7 @@ export function getCloudflareZoneOption(
 
 export interface ComponentProps extends CustomElementProps {
   values: FormValues<CloudflareIntegration>;
+  isMultiSelect?: boolean | undefined;
 }
 
 const CloudflareZoneSelector: FunctionComponent<ComponentProps> = (
@@ -51,6 +57,9 @@ const CloudflareZoneSelector: FunctionComponent<ComponentProps> = (
   const [zones, setZones] = useState<Array<CloudflareZoneOption>>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedZoneIds, setSelectedZoneIds] = useState<Array<string>>(
+    currentZoneId ? [currentZoneId] : [],
+  );
 
   const hasCurrentZoneOption: boolean = useMemo(() => {
     return zones.some((zone: CloudflareZoneOption) => {
@@ -60,6 +69,8 @@ const CloudflareZoneSelector: FunctionComponent<ComponentProps> = (
 
   const fetchZones: () => Promise<void> = async (): Promise<void> => {
     if (!apiToken) {
+      selectedCloudflareZones = [];
+      setSelectedZoneIds([]);
       setZones([]);
       setError(null);
       return;
@@ -111,6 +122,24 @@ const CloudflareZoneSelector: FunctionComponent<ComponentProps> = (
     }
   };
 
+  const updateSelectedZones: (zoneIds: Array<string>) => void = (
+    zoneIds: Array<string>,
+  ): void => {
+    const selectedZones: Array<CloudflareZoneOption> = zones.filter(
+      (zone: CloudflareZoneOption) => {
+        return zoneIds.includes(zone.id);
+      },
+    );
+
+    for (const zone of selectedZones) {
+      zonesById.set(zone.id, zone);
+    }
+
+    selectedCloudflareZones = selectedZones;
+    setSelectedZoneIds(zoneIds);
+    props.onChange?.(zoneIds[0] || "");
+  };
+
   useEffect(() => {
     void fetchZones();
   }, [apiToken]);
@@ -118,44 +147,89 @@ const CloudflareZoneSelector: FunctionComponent<ComponentProps> = (
   return (
     <div className="space-y-2">
       <div className="flex gap-2">
-        <select
-          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm disabled:bg-gray-100 disabled:text-gray-500"
-          disabled={!apiToken || isLoading}
-          onBlur={props.onBlur}
-          onChange={(event: React.ChangeEvent<HTMLSelectElement>) => {
-            const zoneId: string = event.target.value;
-            const zone: CloudflareZoneOption | undefined = zones.find(
-              (item: CloudflareZoneOption) => {
-                return item.id === zoneId;
-              },
-            );
+        {props.isMultiSelect ? (
+          <div className="max-h-48 w-full overflow-y-auto rounded-md border border-gray-300 bg-white p-3 shadow-sm disabled:bg-gray-100">
+            {!apiToken && (
+              <p className="text-sm text-gray-500">Enter API token first</p>
+            )}
+            {apiToken && isLoading && (
+              <p className="text-sm text-gray-500">
+                Loading Cloudflare zones...
+              </p>
+            )}
+            {apiToken && !isLoading && zones.length === 0 && (
+              <p className="text-sm text-gray-500">
+                No zones found for this token.
+              </p>
+            )}
+            {zones.map((zone: CloudflareZoneOption) => {
+              const isChecked: boolean = selectedZoneIds.includes(zone.id);
 
-            if (zone) {
-              zonesById.set(zone.id, zone);
-            }
+              return (
+                <label
+                  className="flex cursor-pointer items-center gap-2 py-1 text-sm text-gray-900"
+                  key={zone.id}
+                >
+                  <input
+                    checked={isChecked}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    onBlur={props.onBlur}
+                    onChange={() => {
+                      updateSelectedZones(
+                        isChecked
+                          ? selectedZoneIds.filter((zoneId: string) => {
+                              return zoneId !== zone.id;
+                            })
+                          : [...selectedZoneIds, zone.id],
+                      );
+                    }}
+                    type="checkbox"
+                  />
+                  <span>{zone.name}</span>
+                </label>
+              );
+            })}
+          </div>
+        ) : (
+          <select
+            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm disabled:bg-gray-100 disabled:text-gray-500"
+            disabled={!apiToken || isLoading}
+            onBlur={props.onBlur}
+            onChange={(event: React.ChangeEvent<HTMLSelectElement>) => {
+              const zoneId: string = event.target.value;
+              const zone: CloudflareZoneOption | undefined = zones.find(
+                (item: CloudflareZoneOption) => {
+                  return item.id === zoneId;
+                },
+              );
 
-            props.onChange?.(zoneId);
-          }}
-          value={currentZoneId}
-        >
-          <option value="">
-            {isLoading
-              ? "Loading Cloudflare zones..."
-              : apiToken
-                ? "Select a Cloudflare zone"
-                : "Enter API token first"}
-          </option>
-          {currentZoneId && !hasCurrentZoneOption && (
-            <option value={currentZoneId}>{currentZoneName}</option>
-          )}
-          {zones.map((zone: CloudflareZoneOption) => {
-            return (
-              <option key={zone.id} value={zone.id}>
-                {zone.name}
-              </option>
-            );
-          })}
-        </select>
+              if (zone) {
+                zonesById.set(zone.id, zone);
+              }
+
+              props.onChange?.(zoneId);
+            }}
+            value={currentZoneId}
+          >
+            <option value="">
+              {isLoading
+                ? "Loading Cloudflare zones..."
+                : apiToken
+                  ? "Select a Cloudflare zone"
+                  : "Enter API token first"}
+            </option>
+            {currentZoneId && !hasCurrentZoneOption && (
+              <option value={currentZoneId}>{currentZoneName}</option>
+            )}
+            {zones.map((zone: CloudflareZoneOption) => {
+              return (
+                <option key={zone.id} value={zone.id}>
+                  {zone.name}
+                </option>
+              );
+            })}
+          </select>
+        )}
         <button
           className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 shadow-sm disabled:bg-gray-100 disabled:text-gray-400"
           disabled={!apiToken || isLoading}

@@ -3253,10 +3253,10 @@ const BaseModelTable: <TBaseModel extends BaseModel | AnalyticsBaseModel>(
           onSuccess: async (item: TBaseModel): Promise<void> => {
             setShowModal(false);
             setCurrentPageNumber(1);
-            await fetchItems();
             if (props.onCreateSuccess) {
               await props.onCreateSuccess(item);
             }
+            await fetchItems();
 
             return Promise.resolve();
           },

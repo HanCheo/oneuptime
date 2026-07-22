@@ -11,9 +11,11 @@ import ModelTable from "Common/UI/Components/ModelTable/ModelTable";
 import FieldType from "Common/UI/Components/Types/FieldType";
 import Navigation from "Common/UI/Utils/Navigation";
 import CloudflareIntegration from "Common/Models/DatabaseModels/CloudflareIntegration";
+import ModelAPI from "Common/UI/Utils/ModelAPI/ModelAPI";
 import CloudflareZoneSelector, {
   CloudflareZoneOption,
   getCloudflareZoneOption,
+  getSelectedCloudflareZones,
 } from "./CloudflareZoneSelector";
 import React, { FunctionComponent, ReactElement } from "react";
 
@@ -48,8 +50,53 @@ const CloudflareIntegrations: FunctionComponent<
       onBeforeCreate={(
         item: CloudflareIntegration,
       ): Promise<CloudflareIntegration> => {
+        const selectedZones: Array<CloudflareZoneOption> =
+          getSelectedCloudflareZones();
+
+        if (selectedZones.length === 0) {
+          throw new Error("Select at least one Cloudflare zone.");
+        }
+
+        const sourceName: string | undefined = item.name;
+
         item.projectId = ProjectUtil.getCurrentProjectId()!;
+        setCloudflareZoneOnIntegration({
+          integration: item,
+          zone: selectedZones[0]!,
+          totalZones: selectedZones.length,
+        });
+
+        pendingCloudflareBulkCreate = {
+          source: item,
+          sourceName: sourceName,
+          zones: selectedZones,
+        };
         return Promise.resolve(item);
+      }}
+      onCreateSuccess={async (
+        item: CloudflareIntegration,
+      ): Promise<CloudflareIntegration> => {
+        const pending: CloudflareBulkCreate | null =
+          pendingCloudflareBulkCreate;
+        pendingCloudflareBulkCreate = null;
+
+        if (!pending || pending.zones.length <= 1) {
+          return item;
+        }
+
+        for (const zone of pending.zones.slice(1)) {
+          await ModelAPI.create<CloudflareIntegration>({
+            model: buildCloudflareIntegrationForZone({
+              source: pending.source,
+              sourceName: pending.sourceName,
+              zone: zone,
+              totalZones: pending.zones.length,
+            }),
+            modelType: CloudflareIntegration,
+          });
+        }
+
+        return item;
       }}
       showRefreshButton={true}
       searchableFields={["name", "description", "cloudflareZoneName"]}
@@ -119,6 +166,92 @@ const CloudflareIntegrations: FunctionComponent<
   );
 };
 
+interface CloudflareBulkCreate {
+  source: CloudflareIntegration;
+  sourceName: string | undefined;
+  zones: Array<CloudflareZoneOption>;
+}
+
+let pendingCloudflareBulkCreate: CloudflareBulkCreate | null = null;
+
+function getCloudflareIntegrationName(data: {
+  sourceName: string | undefined;
+  zone: CloudflareZoneOption;
+  totalZones: number;
+}): string {
+  if (data.totalZones <= 1) {
+    return data.sourceName || data.zone.name;
+  }
+
+  return `${data.sourceName || "Cloudflare"} - ${data.zone.name}`;
+}
+
+function setCloudflareZoneOnIntegration(data: {
+  integration: CloudflareIntegration;
+  zone: CloudflareZoneOption;
+  totalZones: number;
+}): void {
+  data.integration.cloudflareAccountId = data.zone.accountId;
+  data.integration.cloudflareZoneId = data.zone.id;
+  data.integration.cloudflareZoneName = data.zone.name;
+  data.integration.name = getCloudflareIntegrationName({
+    sourceName: data.integration.name,
+    zone: data.zone,
+    totalZones: data.totalZones,
+  });
+}
+
+function buildCloudflareIntegrationForZone(data: {
+  source: CloudflareIntegration;
+  sourceName: string | undefined;
+  zone: CloudflareZoneOption;
+  totalZones: number;
+}): CloudflareIntegration {
+  const integration: CloudflareIntegration = new CloudflareIntegration();
+
+  integration.projectId = ProjectUtil.getCurrentProjectId()!;
+  integration.name = data.sourceName || data.zone.name;
+  if (data.source.description !== undefined) {
+    integration.description = data.source.description;
+  }
+  if (data.source.cloudflareApiToken !== undefined) {
+    integration.cloudflareApiToken = data.source.cloudflareApiToken;
+  }
+  if (data.source.isEnabled !== undefined) {
+    integration.isEnabled = data.source.isEnabled;
+  }
+  if (data.source.pollIntervalInMinutes !== undefined) {
+    integration.pollIntervalInMinutes = data.source.pollIntervalInMinutes;
+  }
+  if (data.source.collectWebAnalyticsMetrics !== undefined) {
+    integration.collectWebAnalyticsMetrics =
+      data.source.collectWebAnalyticsMetrics;
+  }
+  if (data.source.collectDnsMetrics !== undefined) {
+    integration.collectDnsMetrics = data.source.collectDnsMetrics;
+  }
+  if (data.source.collectLoadBalancerMetrics !== undefined) {
+    integration.collectLoadBalancerMetrics =
+      data.source.collectLoadBalancerMetrics;
+  }
+  if (data.source.collectWorkerScriptMetrics !== undefined) {
+    integration.collectWorkerScriptMetrics =
+      data.source.collectWorkerScriptMetrics;
+  }
+  if (data.source.collectRealtimeWebAnalyticsMetrics !== undefined) {
+    integration.collectRealtimeWebAnalyticsMetrics =
+      data.source.collectRealtimeWebAnalyticsMetrics;
+  }
+
+  setCloudflareZoneOnIntegration({
+    integration: integration,
+    zone: data.zone,
+    totalZones: data.totalZones,
+  });
+
+  return integration;
+}
+
 const formSteps: Array<FormStep<CloudflareIntegration>> = [
   {
     title: "Basic Info",
@@ -181,7 +314,13 @@ const formFields: Array<Field<CloudflareIntegration>> = [
       values: FormValues<CloudflareIntegration>,
       props: CustomElementProps,
     ) => {
-      return <CloudflareZoneSelector {...props} values={values} />;
+      return (
+        <CloudflareZoneSelector
+          {...props}
+          isMultiSelect={true}
+          values={values}
+        />
+      );
     },
     onChange: (
       value: JSONValue,
