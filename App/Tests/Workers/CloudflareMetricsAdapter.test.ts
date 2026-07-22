@@ -28,7 +28,7 @@ type AdapterMetric =
   AdapterPayload["resourceMetrics"][number]["scopeMetrics"][number]["metrics"][number];
 
 describe("CloudflareMetricsAdapter", () => {
-  test("uses all adaptive bytes for dashboard bandwidth", () => {
+  test("uses Cloudflare overview bytes for dashboard bandwidth", () => {
     const integration: CloudflareIntegration = {
       cloudflareZoneId: "zone-a",
       cloudflareZoneName: "example.com",
@@ -49,7 +49,7 @@ describe("CloudflareMetricsAdapter", () => {
       dashboardBandwidthRows: [
         {
           dimensions: { datetimeMinute: "2026-07-01T00:00:00Z" },
-          sum: { edgeResponseBytes: 123 },
+          sum: { bytes: 123 },
         },
       ],
       dnsRows: [],

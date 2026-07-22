@@ -94,7 +94,7 @@ describe("CloudflareGraphQLClient.getMetrics", () => {
     jest.clearAllMocks();
   });
 
-  test("queries dashboard bandwidth from all adaptive traffic", async () => {
+  test("queries dashboard bandwidth from Cloudflare overview transfer", async () => {
     axiosPostMock.mockResolvedValueOnce(
       axiosResponse({
         data: {
@@ -105,7 +105,7 @@ describe("CloudflareGraphQLClient.getMetrics", () => {
                 dashboardBandwidthGroups: [
                   {
                     dimensions: { datetimeMinute: "2026-07-01T00:00:00Z" },
-                    sum: { edgeResponseBytes: 123 },
+                    sum: { bytes: 123 },
                   },
                 ],
               },
@@ -127,13 +127,16 @@ describe("CloudflareGraphQLClient.getMetrics", () => {
     expect(result.dashboardBandwidthRows).toEqual([
       {
         dimensions: { datetimeMinute: "2026-07-01T00:00:00Z" },
-        sum: { edgeResponseBytes: 123 },
+        sum: { bytes: 123 },
       },
     ]);
     expect(axiosPostMock.mock.calls[0]?.[2]).toMatchObject({
       headers: { Authorization: "Bearer token-1" },
     });
     const requestBody: unknown = axiosPostMock.mock.calls[0]?.[1];
+    expect((requestBody as { query?: string }).query).toContain(
+      "httpRequestsOverviewAdaptiveGroups",
+    );
     expect((requestBody as { query?: string }).query).not.toContain(
       "requestSource",
     );

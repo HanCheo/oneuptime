@@ -150,7 +150,7 @@ export default class CloudflareMetricsAdapter {
       this.pushSum(metrics, {
         name: "cloudflare.bandwidth.bytes",
         unit: "By",
-        value: row.sum?.edgeResponseBytes,
+        value: row.sum?.bytes,
         timeUnixNano,
         attributes,
       });

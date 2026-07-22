@@ -31,7 +31,7 @@ export interface CloudflareDashboardBandwidthMetricRow {
     datetimeMinute?: string | undefined;
   };
   sum?: {
-    edgeResponseBytes?: number | string | undefined;
+    bytes?: number | string | undefined;
   };
 }
 
@@ -290,13 +290,12 @@ export default class CloudflareGraphQLClient {
         dimensions { datetimeMinute }
         sum { requests bytes cachedRequests cachedBytes }
       }`);
-      queryParts.push(`dashboardBandwidthGroups: httpRequestsAdaptiveGroups(
+      queryParts.push(`dashboardBandwidthGroups: httpRequestsOverviewAdaptiveGroups(
         limit: 10000
         filter: { datetime_geq: $start, datetime_lt: $end }
-        orderBy: [datetimeMinute_ASC]
       ) {
         dimensions { datetimeMinute }
-        sum { edgeResponseBytes }
+        sum { bytes }
       }`);
     }
 
