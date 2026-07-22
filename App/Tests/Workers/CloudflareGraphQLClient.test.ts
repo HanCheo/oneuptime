@@ -12,10 +12,14 @@ jest.mock("axios", () => {
   };
 });
 
-import CloudflareGraphQLClient from "../../FeatureSet/Workers/Utils/Cloudflare/CloudflareGraphQLClient";
+import CloudflareGraphQLClient, {
+  CloudflareMetricsResult,
+} from "../../FeatureSet/Workers/Utils/Cloudflare/CloudflareGraphQLClient";
 
 const axiosGetMock: jest.MockedFunction<typeof axios.get> =
   axios.get as jest.MockedFunction<typeof axios.get>;
+const axiosPostMock: jest.MockedFunction<typeof axios.post> =
+  axios.post as jest.MockedFunction<typeof axios.post>;
 
 const axiosResponse: (
   data: unknown,
@@ -82,5 +86,55 @@ describe("CloudflareGraphQLClient.getZones", () => {
     await expect(CloudflareGraphQLClient.getZones("bad-token")).rejects.toThrow(
       "token cannot list zones",
     );
+  });
+});
+
+describe("CloudflareGraphQLClient.getMetrics", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test("queries dashboard bandwidth from eyeball adaptive traffic", async () => {
+    axiosPostMock.mockResolvedValueOnce(
+      axiosResponse({
+        data: {
+          viewer: {
+            zones: [
+              {
+                httpRequests1mGroups: [],
+                dashboardBandwidthGroups: [
+                  {
+                    dimensions: { datetimeMinute: "2026-07-01T00:00:00Z" },
+                    sum: { edgeResponseBytes: 123 },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    const result: CloudflareMetricsResult =
+      await CloudflareGraphQLClient.getMetrics({
+        apiToken: "token-1",
+        zoneId: "zone-a",
+        start: new Date("2026-07-01T00:00:00Z"),
+        end: new Date("2026-07-01T00:01:00Z"),
+        selection: {},
+      });
+
+    expect(result.dashboardBandwidthRows).toEqual([
+      {
+        dimensions: { datetimeMinute: "2026-07-01T00:00:00Z" },
+        sum: { edgeResponseBytes: 123 },
+      },
+    ]);
+    expect(axiosPostMock.mock.calls[0]?.[2]).toMatchObject({
+      headers: { Authorization: "Bearer token-1" },
+    });
+    expect(axiosPostMock.mock.calls[0]?.[1]).toMatchObject({
+      query: expect.stringContaining('requestSource: "eyeball"'),
+    });
   });
 });

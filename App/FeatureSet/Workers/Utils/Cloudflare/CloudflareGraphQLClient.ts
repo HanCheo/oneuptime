@@ -26,6 +26,15 @@ export interface CloudflareWebMetricRow {
   };
 }
 
+export interface CloudflareDashboardBandwidthMetricRow {
+  dimensions?: {
+    datetimeMinute?: string | undefined;
+  };
+  sum?: {
+    edgeResponseBytes?: number | string | undefined;
+  };
+}
+
 export interface CloudflareRealtimeWebMetricRow {
   count?: number | string | undefined;
   dimensions?: {
@@ -85,6 +94,7 @@ export interface CloudflareWorkerMetricRow {
 
 export interface CloudflareMetricsResult {
   webRows: Array<CloudflareWebMetricRow>;
+  dashboardBandwidthRows: Array<CloudflareDashboardBandwidthMetricRow>;
   dnsRows: Array<CloudflareDnsMetricRow>;
   loadBalancerRows: Array<CloudflareLoadBalancerMetricRow>;
   workerRows: Array<CloudflareWorkerMetricRow>;
@@ -116,6 +126,9 @@ interface CloudflareZoneResponse {
 
 interface CloudflareGraphQLZone {
   httpRequests1mGroups?: Array<CloudflareWebMetricRow> | undefined;
+  dashboardBandwidthGroups?:
+    | Array<CloudflareDashboardBandwidthMetricRow>
+    | undefined;
   dnsAnalyticsAdaptiveGroups?: Array<CloudflareDnsMetricRow> | undefined;
   loadBalancingRequestsAdaptiveGroups?:
     | Array<CloudflareLoadBalancerMetricRow>
@@ -249,6 +262,9 @@ export default class CloudflareGraphQLClient {
 
     for (const zone of zones) {
       result.webRows.push(...(zone.httpRequests1mGroups || []));
+      result.dashboardBandwidthRows.push(
+        ...(zone.dashboardBandwidthGroups || []),
+      );
       result.dnsRows.push(...(zone.dnsAnalyticsAdaptiveGroups || []));
       result.loadBalancerRows.push(
         ...(zone.loadBalancingRequestsAdaptiveGroups || []),
@@ -273,6 +289,14 @@ export default class CloudflareGraphQLClient {
       ) {
         dimensions { datetimeMinute }
         sum { requests bytes cachedRequests cachedBytes }
+      }`);
+      queryParts.push(`dashboardBandwidthGroups: httpRequestsAdaptiveGroups(
+        limit: 10000
+        filter: { datetime_geq: $start, datetime_lt: $end, requestSource: "eyeball" }
+        orderBy: [datetimeMinute_ASC]
+      ) {
+        dimensions { datetimeMinute }
+        sum { edgeResponseBytes }
       }`);
     }
 
@@ -329,6 +353,7 @@ export default class CloudflareGraphQLClient {
   private static emptyResult(): CloudflareMetricsResult {
     return {
       webRows: [],
+      dashboardBandwidthRows: [],
       dnsRows: [],
       loadBalancerRows: [],
       workerRows: [],

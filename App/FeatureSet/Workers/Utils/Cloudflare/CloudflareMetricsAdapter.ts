@@ -1,6 +1,7 @@
 import CloudflareIntegration from "Common/Models/DatabaseModels/CloudflareIntegration";
 import { JSONArray, JSONObject } from "Common/Types/JSON";
 import {
+  CloudflareDashboardBandwidthMetricRow,
   CloudflareDnsMetricRow,
   CloudflareLoadBalancerMetricRow,
   CloudflareMetricsResult,
@@ -36,6 +37,11 @@ export default class CloudflareMetricsAdapter {
     const metrics: JSONArray = [];
 
     this.addWebMetrics(metrics, data.metricsResult.webRows, data.end);
+    this.addDashboardBandwidthMetrics(
+      metrics,
+      data.metricsResult.dashboardBandwidthRows,
+      data.end,
+    );
     this.addDnsMetrics(metrics, data.metricsResult.dnsRows, data.end);
     this.addLoadBalancerMetrics(
       metrics,
@@ -111,13 +117,6 @@ export default class CloudflareMetricsAdapter {
         attributes,
       });
       this.pushSum(metrics, {
-        name: "cloudflare.bandwidth.bytes",
-        unit: "By",
-        value: row.sum?.bytes,
-        timeUnixNano,
-        attributes,
-      });
-      this.pushSum(metrics, {
         name: "cloudflare.cached_requests",
         unit: "1",
         value: row.sum?.cachedRequests,
@@ -128,6 +127,30 @@ export default class CloudflareMetricsAdapter {
         name: "cloudflare.cached_bandwidth.bytes",
         unit: "By",
         value: row.sum?.cachedBytes,
+        timeUnixNano,
+        attributes,
+      });
+    }
+  }
+
+  private static addDashboardBandwidthMetrics(
+    metrics: JSONArray,
+    rows: Array<CloudflareDashboardBandwidthMetricRow>,
+    fallbackEnd: Date,
+  ): void {
+    for (const row of rows) {
+      const timeUnixNano: string = this.toUnixNanoString(
+        this.metricTime(row.dimensions?.datetimeMinute, fallbackEnd),
+      );
+      const attributes: JSONArray = [
+        this.stringAttribute("cloudflare.metric_source", "web"),
+        this.stringAttribute("cloudflare.request_source", "eyeball"),
+      ];
+
+      this.pushSum(metrics, {
+        name: "cloudflare.bandwidth.bytes",
+        unit: "By",
+        value: row.sum?.edgeResponseBytes,
         timeUnixNano,
         attributes,
       });
